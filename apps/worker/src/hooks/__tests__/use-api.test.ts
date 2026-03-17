@@ -97,15 +97,16 @@ describe("use-api hooks", () => {
       });
     });
 
-    expect(apiFetch).toHaveBeenCalledWith("/posts", {
-      method: "POST",
-      body: JSON.stringify({
-        siteId: "site-2",
-        category: Category.HAZARD,
-        content: "테스트 게시글",
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/posts",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"siteId":"site-2"'),
+        offlineQueue: true,
+        offlineMutationType: "createPost",
+        clientMutationId: expect.any(String),
       }),
-      offlineQueue: true,
-    });
+    );
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["posts", "site-2"],
     });
@@ -308,6 +309,7 @@ describe("use-api hooks", () => {
       method: "PATCH",
       body: JSON.stringify({ actionStatus: ActionStatus.IN_PROGRESS }),
       offlineQueue: true,
+      offlineMutationType: "updateActionStatus",
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["actions"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["actions", "a1"] });
@@ -352,16 +354,16 @@ describe("use-api hooks", () => {
       });
     });
 
-    expect(apiFetch).toHaveBeenCalledWith("/recommendations", {
-      method: "POST",
-      body: JSON.stringify({
-        recommendedName: "홍길동",
-        tradeType: "전기",
-        reason: "안전 수칙 준수 우수",
-        siteId: "site-r",
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/recommendations",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"recommendedName":"홍길동"'),
+        offlineQueue: true,
+        offlineMutationType: "submitRecommendation",
+        clientMutationId: expect.any(String),
       }),
-      offlineQueue: true,
-    });
+    );
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["recommendations"],
     });
@@ -456,11 +458,16 @@ describe("use-api hooks", () => {
     );
     expect(apiFetch).toHaveBeenCalledWith("/education/quizzes/q1");
     expect(apiFetch).toHaveBeenCalledWith("/education/quizzes/q1/my-attempts");
-    expect(apiFetch).toHaveBeenCalledWith("/education/quizzes/q1/attempt", {
-      method: "POST",
-      body: JSON.stringify({ answers: { question1: 1 } }),
-      offlineQueue: true,
-    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/education/quizzes/q1/attempt",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"answers"'),
+        offlineQueue: true,
+        offlineMutationType: "submitQuizAttempt",
+        clientMutationId: expect.any(String),
+      }),
+    );
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["quiz-attempts", "q1"],
     });

@@ -105,6 +105,14 @@ app.post(
       .get();
 
     if (existingAttempt) {
+      // Idempotent replay: if clientAttemptId was provided, treat as duplicate submission
+      if (body.clientAttemptId) {
+        return success(c, {
+          attemptId: existingAttempt.id,
+          passed: existingAttempt.passed,
+          deduplicated: true,
+        });
+      }
       if (existingAttempt.passed) {
         return error(c, "ALREADY_COMPLETED", "Course already completed", 409);
       }

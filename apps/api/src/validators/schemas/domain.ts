@@ -40,6 +40,7 @@ export const CreatePostSchema = z.object({
   imageUrls: z.array(z.string()).optional(),
   imageHashes: z.array(z.string().nullable()).optional(),
   metadata: z.record(z.unknown()).optional(),
+  clientMutationId: z.string().uuid().optional(),
 });
 
 export const PostFilterSchema = z.object({
@@ -295,6 +296,7 @@ export const SubmitQuizSchema = z.object({
     z.union([z.number().int(), z.array(z.number().int()), z.string()]),
   ),
   startedAt: isoDateStr,
+  clientAttemptId: z.string().uuid().optional(),
 });
 
 export const UpdateStatutoryTrainingSchema = z.object({

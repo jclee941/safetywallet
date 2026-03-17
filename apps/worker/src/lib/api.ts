@@ -1,4 +1,16 @@
 import { useAuthStore } from "@/stores/auth";
+import {
+  enqueueOfflineRequest,
+  flushOfflineQueue as idbFlushOfflineQueue,
+  getOfflineQueueLength as idbGetOfflineQueueLength,
+  getTotalQueueSize,
+  getBlockedItems,
+  retryBlockedItem,
+  dismissBlockedItem,
+  setApiFetch,
+  initOfflineSync,
+  type OfflineMutationType,
+} from "./offline-queue";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
@@ -6,13 +18,20 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
   /** If true, queue the request when offline instead of throwing */
   offlineQueue?: boolean;
+  /** Mutation type for conflict-aware offline replay */
+  offlineMutationType?: OfflineMutationType;
+  /** Client-generated idempotency key */
+  clientMutationId?: string;
+  /** Optimistic concurrency: server timestamp for compare-and-set */
+  baseUpdatedAt?: string;
 }
 
 // Mutex for concurrent token refresh (prevents race conditions)
 let refreshPromise: Promise<boolean> | null = null;
 
-// ─── Offline Submission Queue ───────────────────────────────
+// ─── Offline Queue (backward-compat re-exports) ────────────
 
+/** @deprecated Use OfflineQueueEntry from offline-queue.ts */
 export interface QueuedRequest {
   id: string;
   endpoint: string;
@@ -20,7 +39,6 @@ export interface QueuedRequest {
   createdAt: string;
   retryCount: number;
 }
-
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
   if (!raw) {
@@ -34,9 +52,8 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
+// Legacy key migration (runs once at module load, per AGENTS.md constraint)
 const QUEUE_KEY = "safetywallet_offline_queue";
-
-// Migrate legacy key on first access
 if (typeof window !== "undefined") {
   try {
     const legacy = localStorage.getItem("safework2_offline_queue");
@@ -49,77 +66,36 @@ if (typeof window !== "undefined") {
   }
 }
 
-function getQueue(): QueuedRequest[] {
-  try {
-    const raw = localStorage.getItem(QUEUE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveQueue(queue: QueuedRequest[]): void {
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-}
-
-function enqueue(endpoint: string, options: FetchOptions): void {
-  const queue = getQueue();
-  queue.push({
-    id: crypto.randomUUID(),
-    endpoint,
-    options: {
-      method: options.method,
-      body: typeof options.body === "string" ? options.body : undefined,
-      headers: options.headers as Record<string, string> | undefined,
-    },
-    createdAt: new Date().toISOString(),
-    retryCount: 0,
-  });
-  saveQueue(queue);
-}
-
-/** Replay all queued requests. Call when coming back online. */
+/** Replay all pending queued requests via IDB-backed queue */
 export async function flushOfflineQueue(): Promise<{
   succeeded: number;
   failed: number;
+  blocked?: number;
 }> {
-  const queue = getQueue();
-  if (queue.length === 0) return { succeeded: 0, failed: 0 };
-
-  let succeeded = 0;
-  let failed = 0;
-  const remaining: QueuedRequest[] = [];
-
-  for (const item of queue) {
-    try {
-      await apiFetch(item.endpoint, {
-        method: item.options.method,
-        body: item.options.body,
-        headers: item.options.headers,
-      });
-      succeeded++;
-    } catch {
-      item.retryCount++;
-      if (item.retryCount < 5) {
-        remaining.push(item);
-      }
-      failed++;
-    }
-  }
-
-  saveQueue(remaining);
-  return { succeeded, failed };
+  return idbFlushOfflineQueue();
 }
 
-/** Get current queue length for UI indicators */
-export function getOfflineQueueLength(): number {
-  return getQueue().length;
+/** Get pending (non-blocked) queue entry count */
+export async function getOfflineQueueLength(): Promise<number> {
+  return idbGetOfflineQueueLength();
 }
 
-// Auto-flush when coming back online
+// Re-export queue management utilities for UI consumption
+export {
+  getTotalQueueSize,
+  getBlockedItems,
+  retryBlockedItem,
+  dismissBlockedItem,
+  initOfflineSync,
+  type OfflineMutationType,
+};
+
+// Wire apiFetch into offline-queue replay (setter avoids circular import)
 if (typeof window !== "undefined") {
-  window.addEventListener("online", () => {
-    flushOfflineQueue();
+  // Deferred to ensure apiFetch is defined before registration
+  queueMicrotask(() => {
+    setApiFetch(apiFetch);
+    initOfflineSync();
   });
 }
 
@@ -130,12 +106,22 @@ export async function apiFetch<T>(
   const {
     skipAuth = false,
     offlineQueue = false,
+    offlineMutationType,
+    clientMutationId,
+    baseUpdatedAt,
     headers: customHeaders,
     ...rest
   } = options;
 
   if (offlineQueue && typeof navigator !== "undefined" && !navigator.onLine) {
-    enqueue(endpoint, options);
+    enqueueOfflineRequest(endpoint, {
+      method: options.method,
+      body: options.body,
+      headers: customHeaders as Record<string, string>,
+      offlineMutationType,
+      clientMutationId,
+      baseUpdatedAt,
+    });
     return { success: true, data: null, queued: true } as unknown as T;
   }
 

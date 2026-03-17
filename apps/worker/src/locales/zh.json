@@ -760,7 +760,12 @@
       "offline": "离线",
       "pending": "离线队列",
       "syncing": "同步中...",
-      "syncNow": "立即同步"
+      "syncNow": "立即同步",
+      "blockedTitle": "同步失败",
+      "showDetails": "详情",
+      "hideDetails": "收起",
+      "retry": "重试",
+      "dismiss": "删除"
     },
     "unsafeWarningTitle": "⚠️ 不安全行为举报指南",
     "unsafeWarningImprovementNote": "不安全行为举报用于改进目的，而非个人处罚。",

@@ -101,6 +101,18 @@ export const registerCrudRoutes = (app: PostsRouteApp): void => {
           return error(c, "NOT_SITE_MEMBER", "Not a member of this site", 403);
         }
 
+        // Idempotency: if clientMutationId was already processed, return that post
+        if (data.clientMutationId) {
+          const existingPost = await db
+            .select({ id: posts.id })
+            .from(posts)
+            .where(eq(posts.clientMutationId, data.clientMutationId))
+            .get();
+          if (existingPost) {
+            return success(c, { id: existingPost.id, deduplicated: true });
+          }
+        }
+
         const postId = crypto.randomUUID();
         const cutoff = Math.floor(Date.now() / 1000) - 86400;
 
@@ -226,6 +238,7 @@ export const registerCrudRoutes = (app: PostsRouteApp): void => {
           metadata: data.metadata,
           isPotentialDuplicate: finalIsPotentialDuplicate,
           duplicateOfPostId,
+          clientMutationId: data.clientMutationId ?? null,
         });
 
         const imageInsertQueries = Array.isArray(data.imageUrls)

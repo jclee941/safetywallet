@@ -760,7 +760,12 @@
       "offline": "Ngoại tuyến",
       "pending": "Hàng chờ ngoại tuyến",
       "syncing": "Đang đồng bộ...",
-      "syncNow": "Đồng bộ ngay"
+      "syncNow": "Đồng bộ ngay",
+      "blockedTitle": "Đồng bộ thất bại",
+      "showDetails": "Chi tiết",
+      "hideDetails": "Ẩn",
+      "retry": "Thử lại",
+      "dismiss": "Bỏ qua"
     },
     "unsafeWarningTitle": "⚠️ Hướng dẫn báo cáo hành vi không an toàn",
     "unsafeWarningImprovementNote": "Báo cáo hành vi không an toàn được sử dụng nhằm mục đích cải thiện, không phải xử phạt cá nhân.",

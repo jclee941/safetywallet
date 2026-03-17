@@ -73,12 +73,16 @@ export function useSubmitRecommendation() {
       tradeType: string;
       reason: string;
       siteId: string;
-    }) =>
-      apiFetch<ApiResponse<{ id: string }>>("/recommendations", {
+    }) => {
+      const clientMutationId = crypto.randomUUID();
+      return apiFetch<ApiResponse<{ id: string }>>("/recommendations", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, clientMutationId }),
         offlineQueue: true,
-      }),
+        offlineMutationType: "submitRecommendation",
+        clientMutationId,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
     },

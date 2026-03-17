@@ -34,12 +34,16 @@ export function useCreatePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreatePostDto) =>
-      apiFetch<ApiResponse<{ post: PostDto }>>("/posts", {
+    mutationFn: (data: CreatePostDto) => {
+      const clientMutationId = crypto.randomUUID();
+      return apiFetch<ApiResponse<{ post: PostDto }>>("/posts", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, clientMutationId }),
         offlineQueue: true,
-      }),
+        offlineMutationType: "createPost",
+        clientMutationId,
+      });
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["posts", variables.siteId] });
     },

@@ -316,6 +316,7 @@ export const posts = sqliteTable(
     ),
     aiClassification: text("ai_classification"),
     aiClassifiedAt: text("ai_classified_at"),
+    clientMutationId: text("client_mutation_id"),
   },
   (table) => ({
     siteReviewStatusIdx: index("posts_site_review_status_idx").on(
@@ -332,6 +333,9 @@ export const posts = sqliteTable(
     ),
     duplicateOfPostIdIdx: index("posts_duplicate_of_post_id_idx").on(
       table.duplicateOfPostId,
+    ),
+    clientMutationIdIdx: uniqueIndex("posts_client_mutation_id_idx").on(
+      table.clientMutationId,
     ),
   }),
 );

@@ -760,7 +760,12 @@
       "offline": "오프라인",
       "pending": "오프라인 대기",
       "syncing": "동기화 중...",
-      "syncNow": "지금 동기화"
+      "syncNow": "지금 동기화",
+      "blockedTitle": "동기화 실패",
+      "showDetails": "상세보기",
+      "hideDetails": "접기",
+      "retry": "재시도",
+      "dismiss": "삭제"
     },
     "unsafeWarningTitle": "⚠️ 불안전행동 제보 안내",
     "unsafeWarningImprovementNote": "불안전행동 제보는 개인 처벌이 아닌 개선 목적으로 활용됩니다.",

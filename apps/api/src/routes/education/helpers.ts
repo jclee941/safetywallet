@@ -97,6 +97,7 @@ export interface SubmitQuizAttemptBody {
   answers?:
     | Array<number | number[] | string>
     | Record<string, number | number[] | string>;
+  clientAttemptId?: string;
 }
 
 export type QuizQuestionType =
@@ -160,6 +161,7 @@ export const SubmitQuizAttemptRequestSchema = z.object({
       z.union([z.number().int(), z.array(z.number().int()), z.string()]),
     ),
   ]),
+  clientAttemptId: z.string().uuid().optional(),
 });
 
 export const parseMultiChoiceAnswers = (

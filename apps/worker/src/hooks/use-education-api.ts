@@ -166,8 +166,11 @@ export function useSubmitQuizAttempt() {
                 (questionId: string) => answers[questionId] ?? "",
               )
             : answers,
+          clientAttemptId: crypto.randomUUID(),
         }),
         offlineQueue: true,
+        offlineMutationType: "submitQuizAttempt",
+        clientMutationId: crypto.randomUUID(),
       }).then((r) => r.data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({

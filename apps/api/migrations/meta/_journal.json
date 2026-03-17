@@ -141,6 +141,13 @@
       "when": 1772800000000,
       "tag": "0031_add_content_features",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1773900000000,
+      "tag": "0032_add_posts_client_mutation_id",
+      "breakpoints": true
     }
   ]
 }

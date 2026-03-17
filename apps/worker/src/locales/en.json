@@ -782,7 +782,12 @@
       "offline": "Offline",
       "pending": "Offline Queue",
       "syncing": "Syncing...",
-      "syncNow": "Sync Now"
+      "syncNow": "Sync Now",
+      "blockedTitle": "Sync Failed",
+      "showDetails": "Details",
+      "hideDetails": "Hide",
+      "retry": "Retry",
+      "dismiss": "Dismiss"
     },
     "unsafeWarningTitle": "⚠️ Unsafe Behavior Report Guide",
     "unsafeWarningImprovementNote": "Unsafe behavior reports are used for improvement purposes, not personal punishment.",

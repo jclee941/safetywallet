@@ -577,6 +577,18 @@ export const ko = {
   "rankingCard.up": "상승",
   "rankingCard.down": "하강",
   "rankingCard.same": "유지",
+
+  // ==================== OFFLINE QUEUE INDICATOR ====================
+  "components.offlineQueue.pending": "오프라인 대기",
+  "components.offlineQueue.countUnit": "건",
+  "components.offlineQueue.syncing": "동기화 중...",
+  "components.offlineQueue.syncNow": "지금 동기화",
+  "components.offlineQueue.offline": "오프라인",
+  "components.offlineQueue.blockedTitle": "동기화 실패",
+  "components.offlineQueue.showDetails": "상세보기",
+  "components.offlineQueue.hideDetails": "접기",
+  "components.offlineQueue.retry": "재시도",
+  "components.offlineQueue.dismiss": "삭제",
 } as const;
 
 export type Ko = typeof ko;

@@ -53,6 +53,7 @@ export function useUpdateActionStatus() {
         method: "PATCH",
         body: JSON.stringify(data),
         offlineQueue: true,
+        offlineMutationType: "updateActionStatus",
       }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["actions"] });
