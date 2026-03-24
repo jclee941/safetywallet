@@ -483,7 +483,7 @@ describe("use-api hooks", () => {
   });
 
   it("education completion hooks fetch status and submit signature", async () => {
-    vi.mocked(apiFetch).mockImplementation((url, options) => {
+    vi.mocked(apiFetch).mockImplementation((url, _options) => {
       if (url === "/education/completions/content-1/me") {
         return Promise.resolve({
           success: true,

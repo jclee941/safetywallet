@@ -1,5 +1,4 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { waitFor } from "@testing-library/react";
 
 interface MockAuthState {
   accessToken: string | null;

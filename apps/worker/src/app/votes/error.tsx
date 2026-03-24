@@ -3,7 +3,7 @@
 import { useTranslation } from "@/hooks/use-translation";
 
 export default function Error({
-  error,
+  error: _error,
   reset,
 }: {
   error: Error & { digest?: string };

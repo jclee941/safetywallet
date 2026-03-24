@@ -211,7 +211,7 @@ describe("AnnouncementsPage", () => {
       },
     );
 
-    const { unmount } = render(<AnnouncementsPage />);
+    render(<AnnouncementsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /새 공지/ }));
     fireEvent.change(screen.getByPlaceholderText("제목"), {
@@ -300,7 +300,7 @@ describe("AnnouncementsPage", () => {
       }),
     );
 
-    const { unmount } = render(<AnnouncementsPage />);
+    render(<AnnouncementsPage />);
 
     const iconButtons = screen
       .getAllByRole("button")

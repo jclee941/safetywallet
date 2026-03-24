@@ -96,7 +96,7 @@ describe("MemberDetailPage", () => {
       toMemberResult({ data: null, isLoading: true, refetch: vi.fn() }),
     );
 
-    const { rerender } = render(<MemberDetailPage />);
+    render(<MemberDetailPage />);
     expect(screen.getAllByTestId("skeleton")).toHaveLength(2);
   });
 
@@ -105,7 +105,7 @@ describe("MemberDetailPage", () => {
       toMemberResult({ data: null, isLoading: false, refetch: vi.fn() }),
     );
 
-    const { rerender } = render(<MemberDetailPage />);
+    render(<MemberDetailPage />);
     expect(screen.getByText("회원을 찾을 수 없습니다")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "돌아가기" }));
     expect(backMock).toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe("MemberDetailPage", () => {
       toMemberResult({ data: baseMember, isLoading: false, refetch }),
     );
 
-    const { rerender } = render(<MemberDetailPage />);
+    render(<MemberDetailPage />);
     fireEvent.click(screen.getByRole("button", { name: "확인" }));
 
     await waitFor(() => {
