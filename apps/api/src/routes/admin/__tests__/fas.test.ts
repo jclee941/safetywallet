@@ -147,13 +147,6 @@ vi.mock("../../../db/helpers", () => ({
   dbBatch: vi.fn(async () => []),
 }));
 
-const DEFAULT_FAS_SOURCE = {
-  dbName: "mdidev",
-  siteCd: "10",
-  d1SiteName: "송도세브란스",
-  workerIdPrefix: "",
-};
-
 vi.mock("../../../lib/fas", () => {
   const source = {
     dbName: "mdidev",

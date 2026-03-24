@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type {
-  Env,
-  User,
-  AuthContext,
-  HyperdriveBinding,
-  AnalyticsEngineDataset,
-} from "../types";
+import type { User, AuthContext } from "../types";
 
 describe("Types", () => {
   it("should export required interfaces", () => {

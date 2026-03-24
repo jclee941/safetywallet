@@ -198,7 +198,7 @@ describe("fas-mariadb", () => {
 
   describe("FAS source resolution", () => {
     it("initializes and resolves source defaults", async () => {
-      const { initFasConfig, resolveFasSource, DEFAULT_FAS_SOURCE } =
+      const { initFasConfig, resolveFasSource } =
         await import("../fas-mariadb");
 
       initFasConfig({

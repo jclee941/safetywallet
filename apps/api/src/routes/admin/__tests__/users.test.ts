@@ -52,8 +52,6 @@ const mockRun = vi.fn();
 const mockInsertValues = vi.fn();
 const mockUpdateSet = vi.fn();
 const mockDeleteWhere = vi.fn();
-let selectCallCount = 0;
-
 function makeSelectChain() {
   const chain: Record<string, unknown> = {};
   const self = (): Record<string, unknown> => chain;
@@ -222,7 +220,6 @@ async function createApp(auth?: AuthContext) {
 describe("admin/users", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    selectCallCount = 0;
     mockDb.select.mockImplementation(() => makeSelectChain());
     mockDb.insert.mockImplementation(() => makeInsertChain());
     mockDb.update.mockImplementation(() => makeUpdateChain());

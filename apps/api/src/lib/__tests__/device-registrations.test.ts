@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   DEVICE_REGISTRATION_LIMIT,
   DEVICE_REGISTRATION_WINDOW_MS,

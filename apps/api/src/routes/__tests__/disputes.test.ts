@@ -175,7 +175,6 @@ async function createApp(auth?: AuthContext) {
 
 const SITE_ID = "00000000-0000-0000-0000-000000000001";
 const DISPUTE_ID = "00000000-0000-0000-0000-000000000099";
-const CANDIDATE_ID = "00000000-0000-0000-0000-000000000055";
 
 describe("routes/disputes", () => {
   beforeEach(() => {

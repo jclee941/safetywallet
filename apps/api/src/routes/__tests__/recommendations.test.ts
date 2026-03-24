@@ -6,7 +6,7 @@ import { attendanceMiddleware } from "../../middleware/attendance";
 // Mock authMiddleware to bypass JWT verification
 vi.mock("../../middleware/auth", () => ({
   authMiddleware: async (
-    c: { get: (k: string) => unknown },
+    _c: { get: (k: string) => unknown },
     next: () => Promise<void>,
   ) => {
     await next();

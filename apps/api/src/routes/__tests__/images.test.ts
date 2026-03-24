@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock auth middleware
 vi.mock("../../middleware/auth", () => ({
-  authMiddleware: vi.fn((c: unknown, next: () => Promise<void>) => next()),
+  authMiddleware: vi.fn((_c: unknown, next: () => Promise<void>) => next()),
 }));
 // Mock image-privacy
 vi.mock("../../lib/image-privacy", () => ({
