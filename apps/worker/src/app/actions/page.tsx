@@ -6,7 +6,7 @@ import { useTranslation } from "@/hooks/use-translation";
 import { useMyActions } from "@/hooks/use-api";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
-import { Card, CardContent, Badge, Skeleton, Button } from "@safetywallet/ui";
+import { Card, CardContent, Badge, Skeleton } from "@safetywallet/ui";
 import { ActionStatus, ActionPriority } from "@safetywallet/types";
 import { cn } from "@/lib/utils";
 import { Calendar } from "lucide-react";

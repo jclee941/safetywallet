@@ -1,26 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and, inArray, or, isNull } from "drizzle-orm";
-import { attendance, users, siteMemberships } from "../../db/schema";
 import { authMiddleware } from "../../middleware/auth";
-import { logAuditWithContext } from "../../lib/audit";
-import { success, error } from "../../lib/response";
 import type { Env, AuthContext } from "../../types";
-import { getTodayRange } from "../../utils/common";
-import {
-  AttendanceSyncBodySchema,
-  type AttendanceSyncEvent,
-} from "../../validators/fas-sync";
-import { createLogger } from "../../lib/logger";
-import { dbBatchChunked } from "../../db/helpers";
-import {
-  fasCheckWorkerAttendance,
-  fasGetDailyAttendance,
-  fasGetDailyAttendanceRealtimeStats,
-  resolveFasSource,
-  resolveFasSourceByWorkerId,
-} from "../../lib/fas";
+import { AttendanceSyncBodySchema } from "../../validators/fas-sync";
 
 // KV-based idempotency cache (CF Workers isolates don't share memory,
 // so in-memory Map is useless — each request runs in a fresh isolate)

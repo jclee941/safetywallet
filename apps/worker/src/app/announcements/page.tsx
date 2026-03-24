@@ -6,14 +6,7 @@ import { useTranslation } from "@/hooks/use-translation";
 import { useAnnouncements } from "@/hooks/use-api";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/bottom-nav";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Skeleton,
-  Badge,
-} from "@safetywallet/ui";
+import { Card, CardContent, Skeleton, Badge } from "@safetywallet/ui";
 import type { AnnouncementDto } from "@safetywallet/types";
 
 type AnnouncementType =

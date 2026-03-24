@@ -136,7 +136,7 @@ export async function calculateApprovalPoints(
 export async function calculateFalseReportPenalty(
   db: ReturnType<typeof drizzle>,
   userId: string,
-  siteId: string,
+  _siteId: string,
   originalPostId: string,
 ): Promise<{ penaltyAmount: number; breakdown: string }> {
   const originalLedger = await db

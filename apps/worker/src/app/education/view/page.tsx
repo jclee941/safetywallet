@@ -29,15 +29,7 @@ import {
   AlertDialogTitle,
   useToast,
 } from "@safetywallet/ui";
-import {
-  FileText,
-  Video,
-  Link as LinkIcon,
-  Download,
-  Calendar,
-  PenLine,
-  CheckCircle2,
-} from "lucide-react";
+import { Video, Download, Calendar, PenLine, CheckCircle2 } from "lucide-react";
 
 function LoadingState() {
   return (

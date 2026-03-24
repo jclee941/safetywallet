@@ -15,7 +15,7 @@ import {
 } from "@safetywallet/ui";
 import { DataTable, type Column } from "@/components/data-table";
 import { useAdminPosts, type PostFilters, type Post } from "@/hooks/use-api";
-import { ReviewStatus, ActionStatus, Category } from "@safetywallet/types";
+import { ReviewStatus, Category } from "@safetywallet/types";
 import { X } from "lucide-react";
 
 const statusLabels: Record<ReviewStatus, string> = {

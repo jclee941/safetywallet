@@ -25,8 +25,6 @@ import {
   BookOpen,
   FileText,
   Video,
-  MonitorPlay,
-  Link as LinkIcon,
   AlertCircle,
   MapPin,
   Users,
