@@ -6,8 +6,8 @@ import { useAuthStore } from "@/stores/auth";
 
 describe("use-api-base", () => {
   it("loads module through relative path", async () => {
-    const module = await import("../use-api-base");
-    expect(module.apiFetch).toBe(apiFetch);
+    const mod = await import("../use-api-base");
+    expect(mod.apiFetch).toBe(apiFetch);
   });
 
   it("re-exports react-query hooks", () => {
