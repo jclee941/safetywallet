@@ -109,7 +109,6 @@ A single Cloudflare Worker handles all traffic via hostname-based routing:
 
 ## Notes
 
-- `docs/cloudflare-operations.md` references `apps/api-worker` — the current path is `apps/api`.
 - Root `AGENTS.md` contains safetywallet project knowledge base. Note: synced from `qws941/.github` — update sync config if project-specific content should persist.
 - FAS integration env vars (`FAS_DB_NAME`, `FAS_SITE_CD`, `FAS_SITE_NAME`) are in wrangler.toml vars section.
 - i18n is worker-only with custom runtime (not next-intl): ko, en, vi, zh locales.

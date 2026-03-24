@@ -156,4 +156,3 @@ npm run git:preflight      # Pre-push verification (Go script)
 - `ARCHITECTURE.md` contains the same architecture details as above — kept in sync as secondary reference.
 - `CODE_STYLE.md` contains naming conventions, import patterns, and testing standards.
 - FAS integration env vars (`FAS_DB_NAME`, `FAS_SITE_CD`, `FAS_SITE_NAME`) are in `wrangler.toml` vars.
-- `docs/cloudflare-operations.md` references `apps/api-worker` — current path is `apps/api`.
