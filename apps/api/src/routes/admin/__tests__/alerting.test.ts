@@ -98,6 +98,23 @@ describe("Admin Alerting and Maintenance Endpoints", () => {
   });
 
   describe("PUT /admin/alerting/config", () => {
+    it("returns 400 for malformed JSON body", async () => {
+      const res = await app.request(
+        "/admin/alerting/config",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: "{invalid",
+        },
+        env(),
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as ErrorResponse;
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe("INVALID_JSON");
+    });
+
     it("updates alert config with valid keys", async () => {
       const updatePayload = {
         webhookUrl: "https://hooks.slack.com/services/test",
@@ -211,6 +228,34 @@ describe("Admin Alerting and Maintenance Endpoints", () => {
   });
 
   describe("POST /admin/alerting/test", () => {
+    it("returns 503 when no webhook URL is configured", async () => {
+      vi.mocked(getAlertConfig).mockResolvedValue({
+        ...defaultAlertConfig,
+        webhookUrl: "",
+      });
+
+      const res = await app.request(
+        "/admin/alerting/test",
+        { method: "POST" },
+        env({ ALERT_WEBHOOK_URL: "" }),
+      );
+
+      expect(res.status).toBe(503);
+      expect(vi.mocked(fireAlert)).not.toHaveBeenCalled();
+    });
+
+    it("returns 502 when webhook delivery fails", async () => {
+      vi.mocked(fireAlert).mockResolvedValue(false);
+
+      const res = await app.request(
+        "/admin/alerting/test",
+        { method: "POST" },
+        env(),
+      );
+
+      expect(res.status).toBe(502);
+    });
+
     it("fires test alert successfully", async () => {
       vi.mocked(getAlertConfig).mockResolvedValue({
         ...defaultAlertConfig,
@@ -302,6 +347,23 @@ describe("Admin Alerting and Maintenance Endpoints", () => {
   });
 
   describe("PUT /admin/maintenance", () => {
+    it("returns 400 for malformed JSON body", async () => {
+      const res = await app.request(
+        "/admin/maintenance",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: "{invalid",
+        },
+        env(),
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as ErrorResponse;
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe("INVALID_JSON");
+    });
+
     it("sets maintenance message successfully", async () => {
       const res = await app.request(
         "/admin/maintenance",

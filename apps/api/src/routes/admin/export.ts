@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import type { Env, AuthContext } from "../../types";
 import { users, posts } from "../../db/schema";
-import { error, success } from "../../lib/response";
+import { error } from "../../lib/response";
 import { createLogger } from "../../lib/logger";
 import { decrypt } from "../../lib/crypto";
 import { logAuditWithContext } from "../../lib/audit";

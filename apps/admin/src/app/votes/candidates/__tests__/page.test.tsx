@@ -47,7 +47,23 @@ vi.mock("@safetywallet/ui", () => ({
     </button>
   ),
   toast: toastMock,
-  AlertDialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  AlertDialog: ({
+    children,
+    open,
+    onOpenChange,
+  }: {
+    children: ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) =>
+    open ? (
+      <div>
+        {children}
+        <button type="button" onClick={() => onOpenChange?.(false)}>
+          dialog-close
+        </button>
+      </div>
+    ) : null,
   AlertDialogContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -64,7 +80,7 @@ vi.mock("@safetywallet/ui", () => ({
     <div>{children}</div>
   ),
   AlertDialogCancel: ({ children }: { children: ReactNode }) => (
-    <button>{children}</button>
+    <button type="button">{children}</button>
   ),
   AlertDialogAction: ({
     children,
@@ -140,5 +156,61 @@ describe("vote candidates page", () => {
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ description: "삭제되었습니다." }),
     );
+  });
+
+  it("shows destructive toast when delete fails", async () => {
+    deleteMock.mockImplementation(
+      (_id: string, options: { onError?: (error: Error) => void }) => {
+        options.onError?.(new Error("권한 없음"));
+      },
+    );
+
+    render(<VoteCandidatesPage />);
+
+    fireEvent.click(screen.getByText("삭제 아이콘"));
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(deleteMock).toHaveBeenCalled();
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+          description: "삭제 실패: 권한 없음",
+        }),
+      );
+    });
+  });
+
+  it("updates candidates query with selected month", () => {
+    render(<VoteCandidatesPage />);
+
+    fireEvent.change(screen.getByDisplayValue(/\d{4}-\d{2}/), {
+      target: { value: "2026-12" },
+    });
+
+    expect(mockUseVoteCandidates).toHaveBeenLastCalledWith("2026-12");
+  });
+
+  it("falls back to empty candidates list when hook data is undefined", () => {
+    mockUseVoteCandidates.mockReturnValueOnce({
+      data: undefined,
+      isLoading: false,
+    } as never);
+
+    render(<VoteCandidatesPage />);
+    expect(screen.queryByText("홍길동")).not.toBeInTheDocument();
+    expect(screen.getByText("투표 후보 관리")).toBeInTheDocument();
+  });
+
+  it("closes dialog via onOpenChange and prevents deletion", () => {
+    render(<VoteCandidatesPage />);
+
+    fireEvent.click(screen.getByText("삭제 아이콘"));
+    fireEvent.click(screen.getByRole("button", { name: "dialog-close" }));
+
+    expect(
+      screen.queryByRole("button", { name: "삭제" }),
+    ).not.toBeInTheDocument();
+    expect(deleteMock).not.toHaveBeenCalled();
   });
 });

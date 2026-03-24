@@ -120,4 +120,51 @@ describe("admin/education completions", () => {
     const body = (await res.json()) as { data: { items: unknown[] } };
     expect(body.data.items).toHaveLength(1);
   });
+
+  it("applies optional completion filters and handles empty total", async () => {
+    thenableResults = [[], []];
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request(
+      "/education/completions?siteId=site-1&contentId=content-1&startDate=2026-03-01&endDate=2026-03-31&page=2&limit=5",
+      {},
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { items: unknown[]; pagination: { total: number; page: number } };
+    };
+    expect(body.data.items).toHaveLength(0);
+    expect(body.data.pagination.total).toBe(0);
+    expect(body.data.pagination.page).toBe(2);
+  });
+
+  it("returns quiz attempts list", async () => {
+    thenableResults = [
+      [
+        {
+          id: "attempt-1",
+          quizId: "quiz-1",
+          userName: "홍길동",
+          score: 80,
+          passed: true,
+          pointsAwarded: 10,
+          completedAt: "2026-03-02T00:00:00Z",
+        },
+      ],
+      [{ count: 1 }],
+    ];
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request(
+      "/education/quiz-attempts?siteId=site-1&quizId=quiz-1&page=1&limit=10",
+      {},
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { items: unknown[] } };
+    expect(body.data.items).toHaveLength(1);
+  });
 });

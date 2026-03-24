@@ -43,6 +43,27 @@ describe("use-actions-api", () => {
     ).toBeDefined();
   });
 
+  it("returns action items when api response is already an array", async () => {
+    mockApiFetch.mockResolvedValue([{ id: "a-array-1" }, { id: "a-array-2" }]);
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useActionItems(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([
+      { id: "a-array-1" },
+      { id: "a-array-2" },
+    ]);
+  });
+
+  it("returns empty list when response object has no data field", async () => {
+    mockApiFetch.mockResolvedValue({});
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useActionItems(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+  });
+
   it("creates action and invalidates post queries", async () => {
     mockApiFetch.mockResolvedValue({ ok: true });
     const { wrapper, queryClient } = createWrapper();

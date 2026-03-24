@@ -49,6 +49,34 @@ describe("sync-lock", () => {
         expect.objectContaining({ expirationTtl: 600 }),
       );
     });
+
+    it("returns not acquired when KV get fails", async () => {
+      const kv = createMockKV();
+      (kv.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("kv read failed"),
+      );
+
+      const result = await acquireSyncLock(
+        kv as unknown as KVNamespace,
+        "test-lock",
+      );
+
+      expect(result).toEqual({ acquired: false });
+    });
+
+    it("returns not acquired when KV put fails", async () => {
+      const kv = createMockKV();
+      (kv.put as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("kv write failed"),
+      );
+
+      const result = await acquireSyncLock(
+        kv as unknown as KVNamespace,
+        "test-lock",
+      );
+
+      expect(result).toEqual({ acquired: false });
+    });
   });
 
   // ---------- releaseSyncLock ----------
@@ -80,6 +108,44 @@ describe("sync-lock", () => {
       await expect(
         releaseSyncLock(kv as unknown as KVNamespace, "test-lock"),
       ).resolves.not.toThrow();
+    });
+
+    it("skips delete when holder does not match", async () => {
+      const kv = createMockKV();
+      await kv.put("sync:lock:test-lock", "actual-holder");
+
+      await releaseSyncLock(
+        kv as unknown as KVNamespace,
+        "test-lock",
+        "expected-holder",
+      );
+
+      expect(kv.delete).not.toHaveBeenCalled();
+    });
+
+    it("deletes lock when holder check finds matching value", async () => {
+      const kv = createMockKV();
+      await kv.put("sync:lock:test-lock", "holder-1");
+
+      await releaseSyncLock(
+        kv as unknown as KVNamespace,
+        "test-lock",
+        "holder-1",
+      );
+
+      expect(kv.delete).toHaveBeenCalledWith("sync:lock:test-lock");
+    });
+
+    it("still deletes when holder is provided but lock key is missing", async () => {
+      const kv = createMockKV();
+
+      await releaseSyncLock(
+        kv as unknown as KVNamespace,
+        "missing-lock",
+        "holder-1",
+      );
+
+      expect(kv.delete).toHaveBeenCalledWith("sync:lock:missing-lock");
     });
   });
 });

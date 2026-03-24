@@ -6,7 +6,6 @@ import {
   useManualApprovals,
   type ManualApproval,
   useApproveManualRequest,
-  useRejectManualRequest,
 } from "@/hooks/use-api";
 import { Button, Badge, toast } from "@safetywallet/ui";
 import { RejectDialog } from "./reject-dialog";
@@ -39,7 +38,6 @@ export function ApprovalList({
       : approvals;
 
   const approveMutation = useApproveManualRequest();
-  const rejectMutation = useRejectManualRequest();
 
   const handleApprove = (id: string) => {
     approveMutation.mutate(id, {

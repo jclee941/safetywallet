@@ -14,6 +14,7 @@ const mockUseAttendanceTrend = vi.mocked(useAttendanceTrend);
 const mockUsePointsDistribution = vi.mocked(usePointsDistribution);
 
 const datePickerChange = vi.fn();
+let currentSiteId: string | null = "site-1";
 
 vi.mock("@/hooks/use-stats", () => ({ useStats: vi.fn() }));
 vi.mock("@/hooks/use-trends", () => ({
@@ -22,8 +23,8 @@ vi.mock("@/hooks/use-trends", () => ({
   usePointsDistribution: vi.fn(),
 }));
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: (selector: (s: { currentSiteId: string }) => unknown) =>
-    selector({ currentSiteId: "site-1" }),
+  useAuthStore: (selector: (s: { currentSiteId: string | null }) => unknown) =>
+    selector({ currentSiteId }),
 }));
 
 vi.mock("./date-range-picker", () => ({
@@ -61,6 +62,7 @@ vi.mock("./points-chart", () => ({
 describe("AnalyticsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentSiteId = "site-1";
 
     mockUseStats.mockReturnValue({
       data: {
@@ -155,5 +157,48 @@ describe("AnalyticsPage", () => {
       "2026-01-31",
       "site-1",
     );
+  });
+
+  it("passes undefined siteId when no site is selected", () => {
+    currentSiteId = null;
+
+    render(<AnalyticsPage />);
+
+    expect(mockUsePostsTrend).toHaveBeenCalledWith(
+      "2026-02-01",
+      "2026-02-28",
+      undefined,
+    );
+    expect(mockUseAttendanceTrend).toHaveBeenCalledWith(
+      "2026-02-01",
+      "2026-02-28",
+      undefined,
+    );
+    expect(mockUsePointsDistribution).toHaveBeenCalledWith(
+      "2026-02-01",
+      "2026-02-28",
+      undefined,
+    );
+  });
+
+  it("formats non-integer and non-number stat values", () => {
+    mockUseStats.mockReturnValue({
+      data: {
+        totalUsers: "N/A",
+        totalSites: 2,
+        totalPosts: 100,
+        activeUsersToday: 3,
+        todayPostsCount: 5,
+        pendingCount: 2,
+        urgentCount: 1,
+        avgProcessingHours: 3.5,
+      },
+      isLoading: false,
+    } as never);
+
+    render(<AnalyticsPage />);
+
+    expect(screen.getByText("N/A명")).toBeInTheDocument();
+    expect(screen.getByText("3.5시간")).toBeInTheDocument();
   });
 });

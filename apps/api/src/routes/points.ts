@@ -37,13 +37,6 @@ interface AwardPointsBody {
   reasonText?: string;
 }
 
-interface QueryPointsParams {
-  siteId?: string;
-  userId?: string;
-  limit?: string;
-  offset?: string;
-}
-
 app.use("*", authMiddleware);
 
 const defaultRateLimit = rateLimitMiddleware();

@@ -1,6 +1,10 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useCreateIssue, useIssues } from "@/hooks/use-issues-api";
+import {
+  useCreateIssue,
+  useIssues,
+  useIssueTemplates,
+} from "@/hooks/use-issues-api";
 import { createWrapper } from "./test-utils";
 
 const mockApiFetch = vi.fn();
@@ -39,6 +43,18 @@ describe("use-issues-api hooks", () => {
     );
   });
 
+  it("uses default state filter when omitted", async () => {
+    mockApiFetch.mockResolvedValueOnce([baseIssue]);
+    const { wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useIssues(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/admin/issues?state=open&per_page=50",
+    );
+  });
+
   it("creates issue and invalidates cache", async () => {
     mockApiFetch.mockResolvedValueOnce(baseIssue);
     const { wrapper, queryClient } = createWrapper();
@@ -59,5 +75,24 @@ describe("use-issues-api hooks", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["admin", "issues"],
     });
+  });
+
+  it("fetches issue templates", async () => {
+    const templates = [
+      {
+        slug: "bug",
+        name: "버그",
+        labels: ["bug"],
+        fields: [],
+      },
+    ];
+    mockApiFetch.mockResolvedValueOnce(templates);
+    const { wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useIssueTemplates(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(templates);
+    expect(mockApiFetch).toHaveBeenCalledWith("/admin/issues/templates");
   });
 });

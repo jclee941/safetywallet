@@ -127,6 +127,22 @@ describe("admin/access-policies", () => {
   });
 
   describe("GET /access-policies/:siteId", () => {
+    it("returns 400 when siteId is empty", async () => {
+      const { default: accessPoliciesRoute } =
+        await import("../access-policies");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", accessPoliciesRoute);
+      const env = { DB: {} } as Record<string, unknown>;
+      const res = await app.request(`/access-policies/${SITE_ID}`, {}, env);
+      expect(res.status).toBe(400);
+    });
+
     it("returns existing policy", async () => {
       mockGet.mockResolvedValueOnce({
         siteId: SITE_ID,
@@ -156,6 +172,44 @@ describe("admin/access-policies", () => {
   });
 
   describe("PUT /access-policies/:siteId", () => {
+    it("returns 400 when siteId is empty", async () => {
+      const { default: accessPoliciesRoute } =
+        await import("../access-policies");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", accessPoliciesRoute);
+      const env = { DB: {} } as Record<string, unknown>;
+      const res = await app.request(
+        `/access-policies/${SITE_ID}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requireCheckin: true }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for malformed JSON body", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        `/access-policies/${SITE_ID}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: "{invalid",
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("updates existing policy", async () => {
       mockGet.mockResolvedValueOnce({ siteId: SITE_ID, requireCheckin: true });
       const updatedPolicy = {

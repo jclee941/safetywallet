@@ -101,6 +101,11 @@ vi.mock("../../lib/face-blur", () => ({
     blurredCount: 0,
   })),
 }));
+// Mock gemini-ai
+vi.mock("../../lib/gemini-ai", () => ({
+  getAiCredentials: vi.fn(() => null),
+  analyzeHazardImage: vi.fn(async () => null),
+}));
 
 import type { Env, AuthContext } from "../../types";
 import imageRoutes from "../images";
@@ -307,6 +312,73 @@ describe("routes/images", () => {
       expect(res.status).toBe(200);
     });
 
+    it("uses siteId from form data for duplicate check", async () => {
+      mockDbAllQueue.push([]);
+
+      const { app, env } = createApp(makeAuth());
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "with-site.jpg",
+      );
+      form.append("siteId", "  site-explicit  ");
+
+      const res = await app.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("skips duplicate check when user has multiple active memberships", async () => {
+      mockDbAllQueue.push([{ siteId: "site-1" }, { siteId: "site-2" }]);
+
+      const { app, env } = createApp(makeAuth());
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "multi-site.jpg",
+      );
+
+      const res = await app.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("skips duplicate check when imageHash is null", async () => {
+      const { computeImageHash } = await import("../../lib/phash");
+      vi.mocked(computeImageHash).mockResolvedValueOnce(
+        null as unknown as string,
+      );
+
+      const { app, env } = createApp(makeAuth());
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "no-hash-result.jpg",
+      );
+
+      const res = await app.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
     it("returns 500 when privacy processing throws", async () => {
       const { processImageForPrivacy } =
         await import("../../lib/image-privacy");
@@ -330,6 +402,49 @@ describe("routes/images", () => {
         env,
       );
       expect(res.status).toBe(500);
+    });
+
+    it("uses jpg fallback extension when filename has trailing dot", async () => {
+      const { app, env, r2 } = createApp(makeAuth());
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "photo.",
+      );
+
+      const res = await app.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const putCall = (r2.put as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(putCall[0]).toMatch(/\.jpg$/);
+    });
+
+    it("handles non-Error value thrown during pHash computation", async () => {
+      const { computeImageHash } = await import("../../lib/phash");
+      vi.mocked(computeImageHash).mockRejectedValueOnce("string-error");
+
+      const { app, env } = createApp(makeAuth());
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "non-error-phash.jpg",
+      );
+
+      const res = await app.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
     });
   });
 
@@ -518,6 +633,315 @@ describe("routes/images", () => {
       );
 
       expect(res.status).toBe(500);
+    });
+
+    it("skips face detection for non-JPEG images when AI is present", async () => {
+      const { isJpegImage } = await import("../../lib/image-privacy");
+      vi.mocked(isJpegImage).mockReturnValueOnce(false);
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const headFn = vi.fn().mockResolvedValue(null);
+      const { app: baseApp, env } = createApp(makeAuth(), {
+        put: putFn,
+        head: headFn,
+      });
+      (env as unknown as Record<string, unknown>).AI = { run: vi.fn() };
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "photo.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("triggers Gemini AI analysis when credentials are present", async () => {
+      const { getAiCredentials, analyzeHazardImage } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValue({
+        apiKey: "test-key",
+      });
+      vi.mocked(analyzeHazardImage).mockResolvedValue({
+        hazardType: "fall_hazard",
+        severity: "HIGH",
+        confidence: 0.92,
+        description: "Elevated work platform",
+        recommendations: ["Install guardrails"],
+        detectedObjects: ["ladder"],
+        relatedRegulations: ["OSHA-1926"],
+        modelVersion: "gemini-pro",
+      });
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const headResult = {
+        customMetadata: { "privacy-processed": "true" },
+      };
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const headFn = vi.fn().mockResolvedValue(headResult);
+
+      const { app: baseApp, env } = createApp(makeAuth(), {
+        put: putFn,
+        head: headFn,
+      });
+
+      (env as unknown as Record<string, unknown>).AI = {
+        run: vi.fn().mockResolvedValue([{ label: "ladder", score: 0.85 }]),
+      };
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "gemini-test.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(waitUntilFn).toHaveBeenCalledTimes(2);
+
+      for (const call of waitUntilFn.mock.calls) {
+        await call[0];
+      }
+
+      expect(analyzeHazardImage).toHaveBeenCalledOnce();
+    });
+
+    it("swallows AI analysis rejection and still returns 200", async () => {
+      const { getAiCredentials, analyzeHazardImage } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValue({
+        apiKey: "test-key",
+      });
+      vi.mocked(analyzeHazardImage).mockRejectedValue(
+        new Error("Gemini API unavailable"),
+      );
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const headResult = {
+        customMetadata: { "privacy-processed": "true" },
+      };
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const headFn = vi.fn().mockResolvedValue(headResult);
+
+      const { app: baseApp, env } = createApp(makeAuth(), {
+        put: putFn,
+        head: headFn,
+      });
+
+      (env as unknown as Record<string, unknown>).AI = {
+        run: vi.fn().mockResolvedValue([{ label: "ladder", score: 0.85 }]),
+      };
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "reject-test.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(waitUntilFn).toHaveBeenCalledTimes(2);
+
+      for (const call of waitUntilFn.mock.calls) {
+        await call[0];
+      }
+
+      expect(analyzeHazardImage).toHaveBeenCalledOnce();
+    });
+
+    it("skips metadata update when AI classification returns null", async () => {
+      const { classifyHazard } = await import("../../lib/workers-ai");
+      vi.mocked(classifyHazard).mockResolvedValueOnce(null as never);
+
+      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValue(null);
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const headFn = vi.fn().mockResolvedValue(null);
+      const { app: baseApp, env } = createApp(makeAuth(), {
+        put: putFn,
+        head: headFn,
+      });
+      (env as unknown as Record<string, unknown>).AI = { run: vi.fn() };
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "null-classify.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+
+      for (const call of waitUntilFn.mock.calls) {
+        await call[0];
+      }
+      expect(headFn).not.toHaveBeenCalled();
+    });
+
+    it("skips storage when Gemini analysis returns null", async () => {
+      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "test-key" });
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const { app: baseApp, env } = createApp(makeAuth(), { put: putFn });
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "null-analysis.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+
+      for (const call of waitUntilFn.mock.calls) {
+        await call[0];
+      }
+    });
+
+    it("skips metadata re-put when R2 head returns null during Gemini analysis", async () => {
+      const { getAiCredentials, analyzeHazardImage } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "test-key" });
+      vi.mocked(analyzeHazardImage).mockResolvedValue({
+        hazardType: "fall_hazard",
+        severity: "HIGH",
+        confidence: 0.92,
+        description: "test",
+        recommendations: [],
+        detectedObjects: [],
+        relatedRegulations: [],
+        modelVersion: "gemini-pro",
+      });
+
+      const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
+      const putFn = vi.fn().mockResolvedValue(undefined);
+      const headFn = vi.fn().mockResolvedValue(null);
+      const { app: baseApp, env } = createApp(makeAuth(), {
+        put: putFn,
+        head: headFn,
+      });
+
+      const wrappedApp = new Hono<AppEnv>();
+      wrappedApp.use("*", async (c, next) => {
+        Object.defineProperty(c, "executionCtx", {
+          value: { waitUntil: waitUntilFn },
+          writable: true,
+        });
+        await next();
+      });
+      wrappedApp.route("/", baseApp);
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], {
+          type: "image/jpeg",
+        }),
+        "head-null.jpg",
+      );
+
+      const res = await wrappedApp.request(
+        "http://localhost/images/upload",
+        { method: "POST", body: form },
+        env,
+      );
+      expect(res.status).toBe(200);
+
+      for (const call of waitUntilFn.mock.calls) {
+        await call[0];
+      }
+      expect(headFn).toHaveBeenCalled();
     });
   });
 });

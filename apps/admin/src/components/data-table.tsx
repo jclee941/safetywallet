@@ -213,13 +213,28 @@ export function DataTable<T extends object>({
             ) : (
               paginatedData.map((item, idx) => (
                 <tr
-                  key={idx}
+                  key={String(
+                    (item as Record<string, unknown>).id ??
+                      JSON.stringify(item),
+                  )}
                   className={cn(
                     "border-t",
                     onRowClick && "cursor-pointer hover:bg-muted/50",
                   )}
                   onClick={() => onRowClick?.(item)}
                 >
+                  {selectable && (
+                    <td className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300"
+                        checked={selectedIndices.has(idx + page * pageSize)}
+                        onChange={(e) => handleSelectRow(idx, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`행 선택 ${idx + 1}`}
+                      />
+                    </td>
+                  )}
                   {columns.map((col) => (
                     <td
                       key={String(col.key)}

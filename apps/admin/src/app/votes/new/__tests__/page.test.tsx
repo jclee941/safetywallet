@@ -54,4 +54,19 @@ describe("new vote page", () => {
     fireEvent.click(screen.getByRole("button", { name: "투표 생성" }));
     expect(pushMock).toHaveBeenCalledWith("/votes/2026-02");
   });
+
+  it("handles direct form submit event", () => {
+    const { container } = render(<NewVotePage />);
+    const form = container.querySelector("form");
+    expect(form).not.toBeNull();
+
+    fireEvent.submit(form!);
+    expect(pushMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("투표 월"), {
+      target: { value: "2026-12" },
+    });
+    fireEvent.submit(form!);
+    expect(pushMock).toHaveBeenCalledWith("/votes/2026-12");
+  });
 });

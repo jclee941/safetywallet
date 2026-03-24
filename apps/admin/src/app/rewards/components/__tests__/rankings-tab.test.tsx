@@ -14,9 +14,45 @@ vi.mock("@/hooks/use-rewards", () => ({
 }));
 
 vi.mock("@/components/data-table", () => ({
-  DataTable: ({ data }: { data: Array<{ nameMasked: string }> }) => (
-    <div>{data.map((d) => d.nameMasked).join(",")}</div>
-  ),
+  DataTable: ({
+    data,
+    columns,
+    emptyMessage,
+  }: {
+    data: Array<{
+      nameMasked: string;
+      totalPoints: number;
+      isCurrentUser: boolean;
+    }>;
+    columns: Array<{
+      key: string;
+      render?: (row: {
+        nameMasked: string;
+        totalPoints: number;
+        isCurrentUser: boolean;
+      }) => ReactNode;
+    }>;
+    emptyMessage?: string;
+  }) => {
+    if (data.length === 0) {
+      return <div>{emptyMessage}</div>;
+    }
+
+    return (
+      <div>
+        {data.map((row, idx) => (
+          <div key={`${row.nameMasked}-${idx}`}>
+            <span>{row.nameMasked}</span>
+            {columns
+              .filter((column) => column.render)
+              .map((column) => (
+                <div key={column.key}>{column.render?.(row)}</div>
+              ))}
+          </div>
+        ))}
+      </div>
+    );
+  },
 }));
 
 vi.mock("@safetywallet/ui", () => ({
@@ -39,7 +75,7 @@ describe("rankings tab", () => {
     expect(screen.getByText("로딩 중...")).toBeInTheDocument();
   });
 
-  it("renders leaderboard", () => {
+  it("renders leaderboard with current and non-current users", () => {
     mockUseMonthlyRankings.mockReturnValueOnce({
       data: {
         leaderboard: [
@@ -49,6 +85,12 @@ describe("rankings tab", () => {
             totalPoints: 1000,
             isCurrentUser: true,
           },
+          {
+            rank: 2,
+            nameMasked: "김철수",
+            totalPoints: 500,
+            isCurrentUser: false,
+          },
         ],
       },
       isLoading: false,
@@ -56,5 +98,20 @@ describe("rankings tab", () => {
     render(<RankingsTab />);
     expect(screen.getByText(/월간 순위/)).toBeInTheDocument();
     expect(screen.getByText("홍길동")).toBeInTheDocument();
+    expect(screen.getByText("1,000P")).toBeInTheDocument();
+    expect(screen.getByText("나")).toBeInTheDocument();
+    expect(screen.getByText("김철수")).toBeInTheDocument();
+    expect(screen.getByText("500P")).toBeInTheDocument();
+  });
+
+  it("renders empty message when leaderboard data is missing", () => {
+    mockUseMonthlyRankings.mockReturnValueOnce({
+      data: undefined,
+      isLoading: false,
+    } as never);
+
+    render(<RankingsTab />);
+
+    expect(screen.getByText("순위 데이터가 없습니다.")).toBeInTheDocument();
   });
 });

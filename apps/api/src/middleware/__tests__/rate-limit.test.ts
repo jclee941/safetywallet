@@ -74,6 +74,31 @@ describe("rateLimitMiddleware", () => {
     );
   });
 
+  it("defaults remaining/reset headers when limiter payload is non-finite", async () => {
+    const rateLimiter = createRateLimiter(
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            allowed: true,
+            remaining: Number.NaN,
+            resetAt: Number.NaN,
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const app = createApp(rateLimitMiddleware({ windowMs: 120_000 }));
+
+    const res = await app.request("http://localhost/resource", undefined, {
+      RATE_LIMITER: rateLimiter,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
+    const resetHeader = Number(res.headers.get("X-RateLimit-Reset"));
+    expect(Number.isFinite(resetHeader)).toBe(true);
+  });
+
   it("returns 429 when request is rate-limited", async () => {
     const rateLimiter = createRateLimiter(
       vi.fn().mockResolvedValue(
@@ -198,5 +223,40 @@ describe("rateLimitMiddleware", () => {
 
     expect(res.status).toBe(200);
     expect(rateLimiter.idFromName).toHaveBeenCalledWith("auth:8.8.8.8");
+  });
+
+  it("falls back to X-Forwarded-For and anonymous auth key generation", async () => {
+    const rateLimiter = createRateLimiter(
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              allowed: true,
+              remaining: 1,
+              resetAt: Date.now() + 60_000,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const app = createApp(authRateLimitMiddleware());
+
+    const forwardedRes = await app.request(
+      "http://localhost/resource",
+      { headers: { "X-Forwarded-For": "9.9.9.9" } },
+      { RATE_LIMITER: rateLimiter },
+    );
+    expect(forwardedRes.status).toBe(200);
+    expect(rateLimiter.idFromName).toHaveBeenCalledWith("auth:9.9.9.9");
+
+    const anonRes = await app.request(
+      "http://localhost/resource",
+      {},
+      {
+        RATE_LIMITER: rateLimiter,
+      },
+    );
+    expect(anonRes.status).toBe(200);
+    expect(rateLimiter.idFromName).toHaveBeenCalledWith("auth:anonymous");
   });
 });

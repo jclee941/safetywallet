@@ -7,11 +7,11 @@ Owns adapters, transforms, queue/sync helpers, and reusable contracts.
 
 ## INVENTORY
 
-- Top-level `.ts` runtime modules (24): `alerting.ts`, `audit.ts`, `auto-issue.ts`, `crypto.ts`, `device-registrations.ts`, `face-blur.ts`, `fas-sync.ts`, `gemini-ai.ts`, `image-privacy.ts`, `jwt.ts`, `key-manager.ts`, `logger.ts`, `notification-queue.ts`, `observability.ts`, `phash.ts`, `points-engine.ts`, `rate-limit.ts`, `response.ts`, `session-cache.ts`, `sms.ts`, `state-machine.ts`, `sync-lock.ts`, `web-push.ts`, `workers-ai.ts`.
+- Top-level `.ts` runtime modules (25): `alerting.ts`, `audit.ts`, `auto-issue.ts`, `crypto.ts`, `csp.ts`, `device-registrations.ts`, `face-blur.ts`, `fas-sync.ts`, `gemini-ai.ts`, `image-privacy.ts`, `jwt.ts`, `key-manager.ts`, `logger.ts`, `notification-queue.ts`, `observability.ts`, `phash.ts`, `points-engine.ts`, `rate-limit.ts`, `response.ts`, `session-cache.ts`, `sms.ts`, `state-machine.ts`, `sync-lock.ts`, `web-push.ts`, `workers-ai.ts`.
 - Type declarations (2): `piexifjs.d.ts`, `sql-js.d.ts`.
 - `fas/` query/mapper package (10 files): attendance queries/helpers, connection, employee queries, mappers, types.
 - `fas-mariadb/` adapter package (1 file): `index.ts`.
-- Child tests dir: `__tests__/` with 24 module suites.
+- Child tests dir: `__tests__/` with 31 module suites.
 
 ## CONVENTIONS
 

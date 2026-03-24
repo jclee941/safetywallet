@@ -103,6 +103,16 @@ describe("attendanceMiddleware", () => {
     expect(res.status).toBe(403);
   });
 
+  it("bypasses checks for SITE_ADMIN role", async () => {
+    const app = createApp("site-1");
+    const res = await app.request(
+      "http://localhost/check",
+      { headers: { "X-Test-Auth": "admin" } },
+      makeEnv(),
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("skips attendance when REQUIRE_ATTENDANCE_FOR_POST is false and no siteId", async () => {
     const app = createApp(undefined);
     const res = await app.request(
@@ -133,6 +143,27 @@ describe("attendanceMiddleware", () => {
       makeEnv({ DB: mockDb, REQUIRE_ATTENDANCE_FOR_POST: "false" }),
     );
     expect(res.status).toBe(403);
+  });
+
+  it("falls back to D1 when cached policy JSON is malformed", async () => {
+    const mockDb = createMockD1([["m-1"]], [[0]]);
+    const kvMock = {
+      get: vi.fn().mockResolvedValue("{bad-json"),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    const app = createApp("site-1");
+    const res = await app.request(
+      "http://localhost/check",
+      { headers: { "X-Test-Auth": "worker" } },
+      makeEnv({
+        DB: mockDb,
+        KV: kvMock,
+        REQUIRE_ATTENDANCE_FOR_POST: "false",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(kvMock.put).toHaveBeenCalled();
   });
 
   it("bypasses attendance check when FAS is down", async () => {

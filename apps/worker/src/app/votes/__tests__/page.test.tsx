@@ -119,4 +119,182 @@ describe("app/votes/page", () => {
     expect(screen.getByText("votes.recommendedToday")).toBeInTheDocument();
     expect(screen.getByText("김근로")).toBeInTheDocument();
   });
+
+  it("shows loading state when today recommendation is loading", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useTodayRecommendation).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as never);
+
+    render(<VotesPage />);
+    expect(screen.getByText("common.loading")).toBeInTheDocument();
+  });
+
+  it("toggles recommendation history and renders items", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useMyRecommendationHistory).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: "r1",
+            recommendedName: "최근로",
+            tradeType: "배관",
+            reason: "우수",
+            recommendationDate: "2026-03-24",
+          },
+        ],
+      },
+    } as never);
+
+    render(<VotesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "votes.showHistory" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("최근로")).toBeInTheDocument();
+      expect(screen.getByText("배관")).toBeInTheDocument();
+    });
+    expect(screen.getByText("우수")).toBeInTheDocument();
+  });
+
+  it("shows empty history message when history is enabled but empty", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useMyRecommendationHistory).mockReturnValue({
+      data: { data: [] },
+    } as never);
+
+    render(<VotesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "votes.showHistory" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("votes.noHistory")).toBeInTheDocument();
+    });
+  });
+
+  it("shows today card without detail section when recommendation object is missing", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useTodayRecommendation).mockReturnValue({
+      data: {
+        data: {
+          hasRecommendedToday: true,
+          recommendation: null,
+        },
+      },
+      isLoading: false,
+    } as never);
+
+    render(<VotesPage />);
+
+    expect(screen.getByText("votes.recommendedToday")).toBeInTheDocument();
+    expect(screen.queryByText("김근로")).not.toBeInTheDocument();
+  });
+
+  it("renders submit error message for Error and non-Error values", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+
+    vi.mocked(useSubmitRecommendation).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      error: new Error("submit failed"),
+    } as never);
+
+    const { rerender } = render(<VotesPage />);
+    expect(screen.getByText("submit failed")).toBeInTheDocument();
+
+    vi.mocked(useSubmitRecommendation).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      error: "unknown-error",
+    } as never);
+
+    rerender(<VotesPage />);
+    expect(screen.getByText("votes.submitError")).toBeInTheDocument();
+  });
+
+  it("shows submitting label when recommendation submission is pending", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useSubmitRecommendation).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: true,
+      error: null,
+    } as never);
+
+    render(<VotesPage />);
+
+    expect(
+      screen.getByRole("button", { name: "votes.submitting" }),
+    ).toBeDisabled();
+  });
+
+  it("uses empty history fallback when history response is undefined", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(useMyRecommendationHistory).mockReturnValue({
+      data: undefined,
+    } as never);
+
+    render(<VotesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "votes.showHistory" }));
+    await waitFor(() => {
+      expect(screen.getByText("votes.noHistory")).toBeInTheDocument();
+    });
+  });
 });

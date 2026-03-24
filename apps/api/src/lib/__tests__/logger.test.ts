@@ -29,6 +29,25 @@ describe("createLogger", () => {
     expect(Number.isNaN(Date.parse(String(entry.timestamp)))).toBe(false);
   });
 
+  it("includes optional site and request fields when provided", () => {
+    const logSpy = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
+    const logger = createLogger("unit-test");
+
+    logger.info("with-request-context", {
+      siteId: "site-1",
+      endpoint: "/api/posts",
+      method: "GET",
+    });
+
+    const [payload] = logSpy.mock.calls[0];
+    const entry = JSON.parse(String(payload)) as Record<string, unknown>;
+    expect(entry.siteId).toBe("site-1");
+    expect(entry.endpoint).toBe("/api/posts");
+    expect(entry.method).toBe("GET");
+  });
+
   it("routes warn and error logs to the matching console methods", () => {
     const warnSpy = vi
       .spyOn(console, "warn")
@@ -157,6 +176,25 @@ describe("createLogger", () => {
     expect(errorField.message).toBe("oops");
   });
 
+  it("treats Error-like object as thrown value", () => {
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const logger = createLogger("unit-test");
+
+    logger.error("error-like", {
+      name: "ErrorLike",
+      message: "from object",
+      stack: "stack",
+    });
+
+    const [payload] = errorSpy.mock.calls[0];
+    const entry = JSON.parse(String(payload)) as Record<string, unknown>;
+    const errorField = entry.error as { name: string; message: string };
+    expect(errorField.name).toBe("UnknownError");
+    expect(errorField.message).toContain("[object Object]");
+  });
+
   it("error() accepts plain context object (no Error)", () => {
     const errorSpy = vi
       .spyOn(console, "error")
@@ -185,6 +223,22 @@ describe("createLogger", () => {
     logger.error("critical");
 
     expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("calls waitUntil for shipped error logs", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const waitUntil = vi.fn<(promise: Promise<unknown>) => void>();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 201 }),
+    );
+    const logger = createLogger("unit-test", {
+      elasticsearchUrl: "https://elastic.example",
+      waitUntil,
+    });
+
+    logger.error("critical-with-wait", new Error("boom"));
+
+    expect(waitUntil).toHaveBeenCalledOnce();
   });
 });
 

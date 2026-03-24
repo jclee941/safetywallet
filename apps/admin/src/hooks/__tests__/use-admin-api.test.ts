@@ -12,6 +12,8 @@ import {
   useMember,
   useMembers,
   useMySites,
+  useSetMemberActiveStatus,
+  useToggleLoginExempt,
   useRejectManualRequest,
   useUpdateAnnouncement,
 } from "@/hooks/use-admin-api";
@@ -89,6 +91,11 @@ describe("use-admin-api hooks", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["admin", "manual-approvals"],
     });
+  });
+
+  it("re-exports member control mutations", () => {
+    expect(typeof useSetMemberActiveStatus).toBe("function");
+    expect(typeof useToggleLoginExempt).toBe("function");
   });
 
   it("uses explicit site id when fetching members", async () => {

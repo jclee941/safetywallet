@@ -11,10 +11,7 @@ import {
 import { success, error } from "../../lib/response";
 import type { Env, AuthContext } from "../../types";
 import { getTodayRange } from "../../utils/common";
-import {
-  AttendanceSyncBodySchema,
-  type AttendanceSyncEvent,
-} from "../../validators/fas-sync";
+import { type AttendanceSyncEvent } from "../../validators/fas-sync";
 import { createLogger } from "../../lib/logger";
 import { dbBatchChunked } from "../../db/helpers";
 import {

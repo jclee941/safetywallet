@@ -38,4 +38,53 @@ describe("DateRangePicker", () => {
       preset: "custom",
     });
   });
+
+  it("emits 30d and 90d preset changes", () => {
+    const onChange = vi.fn();
+    render(
+      <DateRangePicker
+        value={{
+          startDate: "2026-02-01",
+          endDate: "2026-02-28",
+          preset: "7d",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "최근 30일" }));
+    fireEvent.click(screen.getByRole("button", { name: "최근 90일" }));
+
+    expect(onChange).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ preset: "30d" }),
+    );
+    expect(onChange).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ preset: "90d" }),
+    );
+  });
+
+  it("emits custom endDate changes", () => {
+    const onChange = vi.fn();
+    render(
+      <DateRangePicker
+        value={{
+          startDate: "2026-02-01",
+          endDate: "2026-02-28",
+          preset: "30d",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const dateInputs = screen.getAllByDisplayValue(/2026-02/);
+    fireEvent.change(dateInputs[1], { target: { value: "2026-03-01" } });
+
+    expect(onChange).toHaveBeenCalledWith({
+      startDate: "2026-02-01",
+      endDate: "2026-03-01",
+      preset: "custom",
+    });
+  });
 });

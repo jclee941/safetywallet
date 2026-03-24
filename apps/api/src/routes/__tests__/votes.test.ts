@@ -28,6 +28,38 @@ vi.mock("../../lib/response", async () => {
   return actual;
 });
 
+vi.mock("@hono/zod-validator", () => ({
+  zValidator: (_target: string, _schema: unknown) => {
+    return async (
+      c: {
+        req: {
+          raw: Request;
+          addValidatedData: (target: string, data: unknown) => void;
+        };
+      },
+      next: () => Promise<void>,
+    ) => {
+      if (_target === "query") {
+        const url = new URL(c.req.raw.url);
+        const queryObj: Record<string, string> = {};
+        url.searchParams.forEach((v, k) => {
+          queryObj[k] = v;
+        });
+        c.req.addValidatedData("query", queryObj);
+      } else {
+        const cloned = c.req.raw.clone();
+        try {
+          const body = await cloned.json();
+          c.req.addValidatedData("json", body);
+        } catch {
+          c.req.addValidatedData("json", {});
+        }
+      }
+      await next();
+    };
+  },
+}));
+
 const mockGet = vi.fn();
 const mockAll = vi.fn();
 const mockInsertValues = vi.fn();
@@ -203,6 +235,51 @@ describe("routes/votes", () => {
       expect(body.data.hasVoted).toBe(true);
       expect(body.data.votedCandidateId).toBe(CANDIDATE_ID);
       expect(body.data.vote.candidates[0].voteCount).toBe(3);
+    });
+
+    it("falls back to userName then anonymous when nameMasked missing, and 0 for no votes", async () => {
+      const CAND_A = "00000000-0000-0000-0000-a00000000001";
+      const CAND_B = "00000000-0000-0000-0000-a00000000002";
+      mockGet
+        .mockResolvedValueOnce({ siteId: SITE_ID, userId: "user-1" })
+        .mockResolvedValueOnce(null); // no existing vote
+      mockAll
+        .mockResolvedValueOnce([
+          {
+            id: "row-a",
+            userId: CAND_A,
+            source: "AUTO",
+            userName: "김철수",
+            userNameMasked: null,
+          },
+          {
+            id: "row-b",
+            userId: CAND_B,
+            source: "MANUAL",
+            userName: null,
+            userNameMasked: null,
+          },
+        ])
+        .mockResolvedValueOnce([]); // no vote counts
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/votes/current", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          hasVoted: boolean;
+          votedCandidateId: string | null;
+          vote: {
+            candidates: Array<{ name: string; voteCount: number }>;
+          };
+        };
+      };
+      expect(body.data.hasVoted).toBe(false);
+      expect(body.data.votedCandidateId).toBeNull();
+      expect(body.data.vote.candidates[0].name).toBe("김철수");
+      expect(body.data.vote.candidates[0].voteCount).toBe(0);
+      expect(body.data.vote.candidates[1].name).toBe("익명");
+      expect(body.data.vote.candidates[1].voteCount).toBe(0);
     });
   });
 
@@ -418,6 +495,34 @@ describe("routes/votes", () => {
       expect(res.status).toBe(200);
       expect(mockInsertValues).toHaveBeenCalled();
     });
+
+    it("casts vote without siteId by using membership siteId", async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          siteId: SITE_ID,
+          userId: "user-1",
+          status: "ACTIVE",
+        })
+        .mockResolvedValueOnce({ id: "period-1", month: "2025-01" })
+        .mockResolvedValueOnce({ userId: CANDIDATE_ID })
+        .mockResolvedValueOnce(null);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateId: CANDIDATE_ID,
+            month: "2025-01",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(mockInsertValues).toHaveBeenCalled();
+    });
   });
 
   describe("GET /votes/results/:siteId", () => {
@@ -438,6 +543,19 @@ describe("routes/votes", () => {
       };
       expect(body.data.month).toBe("2025-01");
       expect(body.data.results).toHaveLength(1);
+    });
+
+    it("defaults to current month when month query is absent", async () => {
+      mockAll.mockResolvedValueOnce([]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(`/votes/results/${SITE_ID}`, {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { month: string; results: unknown[] };
+      };
+      expect(body.data.month).toMatch(/^\d{4}-\d{2}$/);
+      expect(body.data.results).toHaveLength(0);
     });
   });
 });

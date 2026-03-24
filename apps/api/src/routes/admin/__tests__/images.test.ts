@@ -20,8 +20,17 @@ vi.mock("../../../lib/observability", () => ({
   log: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }));
 
+const mockAll = vi.fn();
+const mockDb = {
+  select: vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(async () => mockAll()),
+    })),
+  })),
+};
+
 vi.mock("drizzle-orm/d1", () => ({
-  drizzle: vi.fn(() => ({})),
+  drizzle: vi.fn(() => mockDb),
 }));
 
 vi.mock("../../../lib/response", async () => {
@@ -76,9 +85,26 @@ async function createApp(auth?: AuthContext) {
 describe("admin/images", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAll.mockReset();
   });
 
   describe("GET /download/:key", () => {
+    it("returns 400 when key is empty", async () => {
+      const { default: imagesRoute } = await import("../images");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", imagesRoute);
+      const mockR2 = { get: vi.fn() };
+      const env = { DB: {}, R2: mockR2 } as Record<string, unknown>;
+      const res = await app.request("/download/photo-1.jpg", {}, env);
+      expect(res.status).toBe(400);
+    });
+
     it("returns watermarked image download", async () => {
       const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
       const mockR2 = { get: vi.fn(async () => makeR2Object(jpegBytes)) };
@@ -151,6 +177,106 @@ describe("admin/images", () => {
       const app = await createApp(makeAuth("WORKER"));
       const res = await app.request("/list", {}, env);
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe("GET /ai-analysis/:key", () => {
+    it("returns 400 when key is empty", async () => {
+      const { default: imagesRoute } = await import("../images");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth("SITE_ADMIN"));
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", imagesRoute);
+      const mockR2 = { get: vi.fn() };
+      const env = { DB: {}, R2: mockR2 } as Record<string, unknown>;
+      const res = await app.request("/ai-analysis/file-1.jpg", {}, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns analysis JSON", async () => {
+      const mockR2 = {
+        get: vi.fn(async () => ({
+          json: vi.fn(async () => ({ risk: "HIGH" })),
+        })),
+      };
+      const env = { DB: {}, R2: mockR2 } as Record<string, unknown>;
+      const app = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/ai-analysis/file-1.jpg", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { analysis: { risk: string } };
+      };
+      expect(body.data.analysis.risk).toBe("HIGH");
+    });
+
+    it("returns 404 when analysis JSON is missing", async () => {
+      const mockR2 = { get: vi.fn(async () => null) };
+      const env = { DB: {}, R2: mockR2 } as Record<string, unknown>;
+      const app = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/ai-analysis/file-1.jpg", {}, env);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /ai-analysis-by-post/:postId", () => {
+    it("returns 400 when postId is empty", async () => {
+      const { default: imagesRoute } = await import("../images");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth("SITE_ADMIN"));
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", imagesRoute);
+      const env = {
+        DB: {},
+        R2: { get: vi.fn() },
+      } as Record<string, unknown>;
+      const res = await app.request("/ai-analysis-by-post/post-1", {}, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns empty analyses when post has no images", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      const env = {
+        DB: {},
+        R2: { get: vi.fn() },
+      } as Record<string, unknown>;
+      const app = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/ai-analysis-by-post/post-1", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { analyses: unknown[] } };
+      expect(body.data.analyses).toHaveLength(0);
+    });
+
+    it("returns only images that have analysis JSON", async () => {
+      mockAll.mockResolvedValueOnce([
+        { fileUrl: "posts/p1/file1.jpg" },
+        { fileUrl: "posts/p1/file2.jpg" },
+      ]);
+      const mockR2 = {
+        get: vi
+          .fn()
+          .mockResolvedValueOnce({ json: vi.fn(async () => ({ score: 90 })) })
+          .mockResolvedValueOnce(null),
+      };
+      const env = { DB: {}, R2: mockR2 } as Record<string, unknown>;
+      const app = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/ai-analysis-by-post/post-1", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          analyses: Array<{ filename: string; analysis: { score: number } }>;
+        };
+      };
+      expect(body.data.analyses).toHaveLength(1);
+      expect(body.data.analyses[0]?.filename).toBe("file1.jpg");
+      expect(body.data.analyses[0]?.analysis.score).toBe(90);
     });
   });
 });

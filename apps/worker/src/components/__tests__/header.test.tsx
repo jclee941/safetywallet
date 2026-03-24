@@ -87,6 +87,27 @@ describe("Header", () => {
     expect(screen.getByText("components.notAttended")).toBeInTheDocument();
   });
 
+  it("handles attended state with null checkinAt", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      isAuthenticated: true,
+      currentSiteId: "site-123",
+      _hasHydrated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+
+    mockUseAttendanceToday.mockReturnValue({
+      data: { attended: true, checkinAt: null },
+      isLoading: false,
+    } as unknown as ReturnType<typeof useAttendanceToday>);
+
+    render(<Header />);
+
+    expect(screen.getByText(/components\.attended/)).toBeInTheDocument();
+  });
+
   it("does not show badge before hydration", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,

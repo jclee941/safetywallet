@@ -39,27 +39,6 @@ const statusColors: Record<
   [ReviewStatus.URGENT]: "destructive",
 };
 
-const actionStatusLabels: Record<ActionStatus, string> = {
-  [ActionStatus.NONE]: "없음",
-  [ActionStatus.ASSIGNED]: "배정됨",
-  [ActionStatus.IN_PROGRESS]: "진행 중",
-  [ActionStatus.COMPLETED]: "완료",
-  [ActionStatus.VERIFIED]: "확인됨",
-  [ActionStatus.OVERDUE]: "기한초과",
-};
-
-const actionStatusColors: Record<
-  ActionStatus,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  [ActionStatus.NONE]: "outline",
-  [ActionStatus.ASSIGNED]: "secondary",
-  [ActionStatus.IN_PROGRESS]: "default",
-  [ActionStatus.COMPLETED]: "default",
-  [ActionStatus.VERIFIED]: "default",
-  [ActionStatus.OVERDUE]: "destructive",
-};
-
 const categoryLabels: Record<Category, string> = {
   [Category.HAZARD]: "위험요소",
   [Category.UNSAFE_BEHAVIOR]: "불안전 행동",

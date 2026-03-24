@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { Env, AuthContext } from "../../types";
+import { attendanceMiddleware } from "../../middleware/attendance";
 
 // Mock authMiddleware to bypass JWT verification
 vi.mock("../../middleware/auth", () => ({
@@ -79,6 +80,54 @@ describe("recommendations route", () => {
   }
 
   // ---------- GET /today ----------
+
+  describe("GET /", () => {
+    it("returns 400 when siteId is missing", async () => {
+      const db = createMockD1();
+      const { app, env } = createApp(makeAuth(), db);
+
+      const res = await app.request(
+        "http://localhost/recommendations",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("MISSING_PARAMS");
+    });
+
+    it("returns recommendation list with capped limit and offset", async () => {
+      const db = createMockD1([
+        [
+          [
+            "rec-1",
+            "site-1",
+            "user-1",
+            "Kim",
+            "electrician",
+            "great worker",
+            "2025-01-01",
+            null,
+            null,
+          ],
+        ],
+      ]);
+      const { app, env } = createApp(makeAuth(), db);
+
+      const res = await app.request(
+        "http://localhost/recommendations?siteId=site-1&limit=999&offset=3",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { recommendations: unknown[]; limit: number; offset: number };
+      };
+      expect(body.data.recommendations).toHaveLength(1);
+      expect(body.data.limit).toBe(100);
+      expect(body.data.offset).toBe(3);
+    });
+  });
 
   describe("GET /today", () => {
     it("returns 400 when siteId is missing", async () => {
@@ -274,6 +323,11 @@ describe("recommendations route", () => {
         env,
       );
       expect(res.status).toBe(201);
+      expect(attendanceMiddleware).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(Function),
+        "site-1",
+      );
     });
 
     it("returns 400 for invalid body (missing fields)", async () => {

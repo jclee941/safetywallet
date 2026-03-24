@@ -72,13 +72,26 @@ describe("ApprovalsPage", () => {
   it("switches to history tab", () => {
     render(<ApprovalsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "처리 내역" }));
+    const pendingTab = screen.getByRole("button", { name: "대기 중" });
+    const historyTab = screen.getByRole("button", { name: "처리 내역" });
+
+    expect(pendingTab.className).toContain(
+      "border-b-2 border-primary text-primary",
+    );
+    expect(historyTab.className).toContain("text-muted-foreground");
+
+    fireEvent.click(historyTab);
 
     expect(screen.getByTestId("approval-list")).toHaveTextContent("HISTORY");
     expect(latestApprovalListProps).toEqual({
       status: "HISTORY",
       selectable: false,
     });
+
+    expect(pendingTab.className).toContain("text-muted-foreground");
+    expect(historyTab.className).toContain(
+      "border-b-2 border-primary text-primary",
+    );
   });
 
   it("opens and closes manual approval dialog", () => {

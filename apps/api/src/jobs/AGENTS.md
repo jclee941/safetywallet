@@ -9,7 +9,7 @@ Owns cron metadata, dispatch registry, and job helper side effects.
 
 - Runtime job files (5): `daily-jobs.ts`, `helpers.ts`, `monthly-jobs.ts`, `registry.ts`, `sync-jobs.ts`.
 - Registry job names (10): `fas-sync`, `publish-scheduled-announcements`, `metrics-alert-check`, `fas-full-sync-daily`, `overdue-action-check`, `pii-lifecycle-cleanup`, `vote-reward-distribution`, `data-retention`, `month-end-snapshot`, `auto-nomination`.
-- Test files (3): `helpers.test.ts`, `orchestrator.test.ts`, `registry.test.ts` in `__tests__/`.
+- Test files (6): `daily-jobs.test.ts`, `helpers.test.ts`, `monthly-jobs.test.ts`, `orchestrator.test.ts`, `registry.test.ts`, `sync-jobs.test.ts` in `__tests__/`.
 
 ## CONVENTIONS
 

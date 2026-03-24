@@ -177,4 +177,36 @@ describe("OfflineQueueIndicator", () => {
       expect(dismissBlockedItem).toHaveBeenCalledWith("blocked-1");
     });
   });
+
+  it("prevents sync action when offline even if button is force-clicked", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    vi.mocked(getOfflineQueueLength).mockResolvedValue(2);
+
+    render(<OfflineQueueIndicator />);
+
+    const button = await screen.findByRole("button", {
+      name: "components.offlineQueue.offline",
+    });
+    button.removeAttribute("disabled");
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(flushOfflineQueue).not.toHaveBeenCalled();
+    });
+  });
+
+  it("adds blocked section divider when pending and blocked items coexist", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    vi.mocked(getOfflineQueueLength).mockResolvedValue(1);
+    vi.mocked(getBlockedItems).mockResolvedValue([blockedItem]);
+
+    render(<OfflineQueueIndicator />);
+
+    await screen.findByText("components.offlineQueue.pending");
+    const blockedTitle = await screen.findByText(
+      "components.offlineQueue.blockedTitle",
+    );
+    const wrapper = blockedTitle.closest("div.mt-3.border-t.pt-3");
+    expect(wrapper).toBeTruthy();
+  });
 });

@@ -463,6 +463,31 @@ describe("fas-mariadb", () => {
       ]);
     });
 
+    it("returns attendance trend points with defaulted values", async () => {
+      const { fasGetAttendanceTrend, DEFAULT_FAS_SOURCE } =
+        await import("../fas-mariadb");
+
+      mockQuery.mockResolvedValueOnce([
+        [
+          { accs_day: null, cnt: null },
+          { accs_day: "20260206", cnt: undefined },
+        ],
+      ]);
+
+      const result = await fasGetAttendanceTrend(
+        mockHyperdrive,
+        "20260205",
+        "20260206",
+        null,
+        DEFAULT_FAS_SOURCE,
+      );
+
+      expect(result).toEqual([
+        { date: "", count: 0 },
+        { date: "20260206", count: 0 },
+      ]);
+    });
+
     it("returns paginated attendance list with total", async () => {
       const { fasGetAttendanceList, DEFAULT_FAS_SOURCE } =
         await import("../fas-mariadb");
@@ -492,6 +517,109 @@ describe("fas-mariadb", () => {
       expect(result.total).toBe(2);
       expect(result.records).toHaveLength(1);
       expect(result.records[0].emplCd).toBe("24000001");
+    });
+
+    it("applies list fallback branches for site, pagination, and null fields", async () => {
+      const { fasGetAttendanceList, DEFAULT_FAS_SOURCE } =
+        await import("../fas-mariadb");
+
+      mockQuery.mockResolvedValueOnce([[{}]]).mockResolvedValueOnce([
+        [
+          {
+            empl_cd: null,
+            empl_nm: null,
+            part_cd: null,
+            part_nm: null,
+            in_time: null,
+            out_time: null,
+            accs_day: null,
+          },
+        ],
+      ]);
+
+      const result = await fasGetAttendanceList(
+        mockHyperdrive,
+        "20260206",
+        null,
+        0,
+        -10.7,
+        DEFAULT_FAS_SOURCE,
+      );
+
+      expect(result.total).toBe(0);
+      expect(result.records).toEqual([
+        {
+          emplCd: "",
+          name: "",
+          partCd: "",
+          companyName: "",
+          inTime: null,
+          outTime: null,
+          accsDay: "",
+        },
+      ]);
+
+      const countQuery = mockQuery.mock.calls[0][0] as string;
+      const countParams = mockQuery.mock.calls[0][1] as unknown[];
+      const listParams = mockQuery.mock.calls[1][1] as unknown[];
+
+      expect(countQuery).not.toContain("ad.site_cd = ?");
+      expect(countParams).toEqual(["20260206"]);
+      expect(listParams).toEqual(["20260206", 1, 0]);
+    });
+
+    it("clamps oversized list limit and normalizes offset", async () => {
+      const { fasGetAttendanceList, DEFAULT_FAS_SOURCE } =
+        await import("../fas-mariadb");
+
+      mockQuery
+        .mockResolvedValueOnce([[{ cnt: 1 }]])
+        .mockResolvedValueOnce([[sampleAttendanceRow({ in_time: "915" })]]);
+
+      const result = await fasGetAttendanceList(
+        mockHyperdrive,
+        "20260206",
+        DEFAULT_FAS_SOURCE.siteCd,
+        1234.9,
+        9.9,
+        DEFAULT_FAS_SOURCE,
+      );
+
+      expect(result.records[0]?.inTime).toBe("0915");
+
+      const listParams = mockQuery.mock.calls[1][1] as unknown[];
+      expect(listParams).toEqual([
+        "20260206",
+        DEFAULT_FAS_SOURCE.siteCd,
+        500,
+        9,
+      ]);
+    });
+
+    it("ignores invalid realtime rows without worker/checkin keys", async () => {
+      const { fasGetDailyAttendanceRealtimeStats, DEFAULT_FAS_SOURCE } =
+        await import("../fas-mariadb");
+
+      mockQuery
+        .mockResolvedValueOnce([
+          [
+            { empl_cd: "", checkin_key: "202602060830" },
+            { empl_cd: "w1", checkin_key: "" },
+            { empl_cd: "w1", checkin_key: "202602060830" },
+          ],
+        ])
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([[]]);
+
+      const stats = await fasGetDailyAttendanceRealtimeStats(
+        mockHyperdrive,
+        "20260206",
+        DEFAULT_FAS_SOURCE.siteCd,
+      );
+
+      expect(stats.totalRows).toBe(3);
+      expect(stats.checkedInWorkers).toBe(1);
+      expect(stats.dedupCheckinEvents).toBe(1);
     });
   });
 

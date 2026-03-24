@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import { AdminChangeRoleSchema } from "../../../validators/schemas";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -243,6 +244,41 @@ describe("admin/users", () => {
       const res = await app.request("/unlock-user/abc123", {}, env);
       expect(res.status).toBe(403);
     });
+
+    it("returns 400 when phoneHash param is empty", async () => {
+      const { default: route } = await import("../users");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = {
+        DB: {},
+        KV: { delete: vi.fn() },
+        R2: { delete: vi.fn() },
+        HMAC_SECRET: "secret",
+        ENCRYPTION_KEY: "enc-key",
+        RATE_LIMITER: null,
+      } as Record<string, unknown>;
+      const res = await app.request("/unlock-user/abc123", {}, env);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("PHONE_HASH_REQUIRED");
+    });
+
+    it("continues when unlock-user audit log insert fails", async () => {
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/unlock-user/abc123", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { unlocked: boolean } };
+      expect(body.data.unlocked).toBe(true);
+    });
   });
 
   describe("POST /unlock-user-by-phone", () => {
@@ -304,6 +340,55 @@ describe("admin/users", () => {
       expect(mockLimiter.get).toHaveBeenCalledWith("limiter-id");
       expect(mockFetch).toHaveBeenCalled();
     });
+
+    it("returns 400 for invalid phone payload", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/unlock-user-by-phone",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: "123" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for too-short (2-char) phone payload", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/unlock-user-by-phone",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: "12" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+    });
+
+    it("continues when unlock-user-by-phone audit log insert fails", async () => {
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/unlock-user-by-phone",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: "010-1234-5678" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { unlocked: boolean } };
+      expect(body.data.unlocked).toBe(true);
+    });
   });
 
   describe("GET /users", () => {
@@ -334,6 +419,131 @@ describe("admin/users", () => {
       };
       expect(body.data.users[0].phone).toBeNull();
       expect(body.data.users[0].dob).toBeNull();
+    });
+
+    it("defaults piiViewFull to false when currentUserRecord is null", async () => {
+      mockGet.mockResolvedValueOnce(null).mockResolvedValueOnce({ count: 1 });
+      mockAll.mockResolvedValueOnce([
+        {
+          id: "u-1",
+          name: "Kim",
+          nameMasked: "K**",
+          phoneEncrypted: "enc-phone",
+          dobEncrypted: "enc-dob",
+          role: "WORKER",
+          falseReportCount: 0,
+          restrictedUntil: null,
+          createdAt: new Date("2025-01-01T00:00:00Z"),
+        },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { users: Array<{ phone: string | null; dob: string | null }> };
+      };
+      expect(body.data.users[0].phone).toBeNull();
+      expect(body.data.users[0].dob).toBeNull();
+    });
+
+    it("returns null for phone/dob when encrypted values are null with piiViewFull", async () => {
+      const { decrypt } = await import("../../../lib/crypto");
+      mockGet
+        .mockResolvedValueOnce({ piiViewFull: true })
+        .mockResolvedValueOnce({ count: 1 });
+      mockAll.mockResolvedValueOnce([
+        {
+          id: "u-2",
+          name: "Lee",
+          nameMasked: "L**",
+          phoneEncrypted: null,
+          dobEncrypted: null,
+          role: "WORKER",
+          falseReportCount: 0,
+          restrictedUntil: null,
+          createdAt: new Date("2025-01-01T00:00:00Z"),
+        },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { users: Array<{ phone: string | null; dob: string | null }> };
+      };
+      expect(body.data.users[0].phone).toBeNull();
+      expect(body.data.users[0].dob).toBeNull();
+      expect(decrypt).not.toHaveBeenCalled();
+    });
+
+    it("sets targetUserId to undefined when viewing multiple users with piiViewFull", async () => {
+      const { decrypt } = await import("../../../lib/crypto");
+      const { logAuditWithContext } = await import("../../../lib/audit");
+
+      vi.mocked(decrypt).mockResolvedValue("decrypted");
+      mockGet
+        .mockResolvedValueOnce({ piiViewFull: true })
+        .mockResolvedValueOnce({ count: 2 });
+      mockAll.mockResolvedValueOnce([
+        {
+          id: "u-1",
+          name: "Kim",
+          nameMasked: "K**",
+          phoneEncrypted: "enc",
+          dobEncrypted: "enc",
+          role: "WORKER",
+          falseReportCount: 0,
+          restrictedUntil: null,
+          createdAt: new Date("2025-01-01T00:00:00Z"),
+        },
+        {
+          id: "u-2",
+          name: "Park",
+          nameMasked: "P**",
+          phoneEncrypted: "enc2",
+          dobEncrypted: "enc2",
+          role: "WORKER",
+          falseReportCount: 0,
+          restrictedUntil: null,
+          createdAt: new Date("2025-01-01T00:00:00Z"),
+        },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+
+      expect(res.status).toBe(200);
+      expect(logAuditWithContext).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "PII_VIEW",
+        "admin-1",
+        "USER",
+        "BULK",
+        expect.objectContaining({
+          targetUserId: undefined,
+          rowCount: 2,
+        }),
+      );
+    });
+
+    it("returns total 0 when totalResult is null", async () => {
+      mockGet
+        .mockResolvedValueOnce({ piiViewFull: false })
+        .mockResolvedValueOnce(null);
+      mockAll.mockResolvedValueOnce([]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { total: number };
+      };
+      expect(body.data.total).toBe(0);
     });
 
     it("returns decrypted pii and logs audit when piiViewFull enabled", async () => {
@@ -393,6 +603,34 @@ describe("admin/users", () => {
       expect(body.data.users).toHaveLength(1);
       expect(body.data.total).toBe(1);
     });
+
+    it("returns restrictions without activeOnly filter", async () => {
+      mockAll.mockResolvedValueOnce([
+        { id: "u-1", restrictedUntil: new Date() },
+      ]);
+      mockGet.mockResolvedValueOnce({ count: 2 });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users/restrictions", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { users: unknown[]; total: number };
+      };
+      expect(body.data.total).toBe(2);
+    });
+
+    it("returns total 0 when totalResult is null in restrictions", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      mockGet.mockResolvedValueOnce(null);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users/restrictions", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { total: number };
+      };
+      expect(body.data.total).toBe(0);
+    });
   });
 
   describe("POST /users/:id/restriction/clear", () => {
@@ -423,6 +661,52 @@ describe("admin/users", () => {
 
       expect(res.status).toBe(404);
     });
+
+    it("returns 400 when userId param is empty", async () => {
+      const { default: route } = await import("../users");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = {
+        DB: {},
+        KV: { delete: vi.fn() },
+        R2: { delete: vi.fn() },
+        HMAC_SECRET: "secret",
+        ENCRYPTION_KEY: "enc-key",
+        RATE_LIMITER: null,
+      } as Record<string, unknown>;
+      const res = await app.request(
+        "/users/u-1/restriction/clear",
+        { method: "POST" },
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("continues when restriction-clear audit log insert fails", async () => {
+      mockGet.mockResolvedValueOnce({ id: "u-1", restrictedUntil: null });
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/restriction/clear",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { user: { id: string } } };
+      expect(body.data.user.id).toBe("u-1");
+    });
   });
 
   describe("PATCH /users/:id/role", () => {
@@ -438,6 +722,29 @@ describe("admin/users", () => {
         env,
       );
       expect(res.status).toBe(400);
+    });
+
+    it("returns 400 from route guard when role enum is invalid", async () => {
+      const safeParseSpy = vi.spyOn(AdminChangeRoleSchema, "safeParse");
+      const mockedParseResult = {
+        success: true,
+        data: { role: "INVALID_ROLE" },
+      } as unknown as ReturnType<typeof AdminChangeRoleSchema.safeParse>;
+      safeParseSpy.mockReturnValue(mockedParseResult);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/role",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "INVALID_ROLE" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      safeParseSpy.mockRestore();
     });
 
     it("returns 404 when target user is not found before update", async () => {
@@ -496,6 +803,28 @@ describe("admin/users", () => {
   });
 
   describe("POST /users/:id/lock", () => {
+    it("returns 400 when userId is empty", async () => {
+      const { default: route } = await import("../users");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = {
+        DB: {},
+        KV: { delete: vi.fn() },
+        R2: { delete: vi.fn() },
+        HMAC_SECRET: "secret",
+        ENCRYPTION_KEY: "enc-key",
+        RATE_LIMITER: null,
+      } as Record<string, unknown>;
+      const res = await app.request("/users/u-1/lock", { method: "POST" }, env);
+      expect(res.status).toBe(400);
+    });
+
     it("locks user", async () => {
       mockGet.mockResolvedValueOnce({ id: "u-1" });
 
@@ -518,9 +847,47 @@ describe("admin/users", () => {
       );
       expect(res.status).toBe(404);
     });
+
+    it("continues when lock audit log fails", async () => {
+      mockGet.mockResolvedValueOnce({ id: "u-1" });
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit write failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users/u-1/lock", { method: "POST" }, env);
+
+      expect(res.status).toBe(200);
+    });
   });
 
   describe("POST /users/:id/unlock", () => {
+    it("returns 400 when userId is empty", async () => {
+      const { default: route } = await import("../users");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = {
+        DB: {},
+        KV: { delete: vi.fn() },
+        R2: { delete: vi.fn() },
+        HMAC_SECRET: "secret",
+        ENCRYPTION_KEY: "enc-key",
+        RATE_LIMITER: null,
+      } as Record<string, unknown>;
+      const res = await app.request(
+        "/users/u-1/unlock",
+        { method: "POST" },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("unlocks user", async () => {
       mockGet.mockResolvedValueOnce({ id: "u-1" });
 
@@ -546,6 +913,22 @@ describe("admin/users", () => {
         env,
       );
       expect(res.status).toBe(404);
+    });
+
+    it("continues when unlock audit log fails", async () => {
+      mockGet.mockResolvedValueOnce({ id: "u-1" });
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit write failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/unlock",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
     });
   });
 
@@ -745,6 +1128,141 @@ describe("admin/users", () => {
             reason: "Emergency legal compliance cleanup",
             confirmUserId: "u-err",
           }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("continues purge when R2 image delete throws non-Error value", async () => {
+      mockGet.mockResolvedValueOnce({
+        id: "u-str",
+        name: "Yoon",
+        deletedAt: null,
+      });
+      mockAll
+        .mockResolvedValueOnce([{ id: "p1" }])
+        .mockResolvedValueOnce([{ fileUrl: "non-error.jpg" }]);
+
+      mockDb.delete.mockImplementation(() => {
+        const chain = makeDeleteChain();
+        chain.returning = vi.fn().mockReturnValue([{ id: "m1" }]);
+        return chain;
+      });
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (
+        env.R2 as { delete: ReturnType<typeof vi.fn> }
+      ).delete.mockRejectedValueOnce("string error without Error class");
+
+      const res = await app.request(
+        "/users/u-str/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Compliance purge with non-Error R2 failure",
+            confirmUserId: "u-str",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("continues purge when KV cleanup fails", async () => {
+      mockGet.mockResolvedValueOnce({
+        id: "u-kv",
+        name: "Choi",
+        deletedAt: null,
+      });
+      mockAll
+        .mockResolvedValueOnce([{ id: "p1" }])
+        .mockResolvedValueOnce([{ fileUrl: "img1.jpg" }]);
+
+      mockDb.delete.mockImplementation(() => {
+        const chain = makeDeleteChain();
+        chain.returning = vi.fn().mockReturnValue([{ id: "m1" }]);
+        return chain;
+      });
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (env.KV as { delete: ReturnType<typeof vi.fn> }).delete
+        .mockRejectedValueOnce(new Error("kv user delete failed"))
+        .mockRejectedValueOnce(new Error("kv session delete failed"));
+
+      const res = await app.request(
+        "/users/u-kv/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Compliance purge with kv cleanup failure",
+            confirmUserId: "u-kv",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("PATCH /users/:id/login-exempt", () => {
+    it("updates login exempt flag", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/login-exempt",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loginExempt: true }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { updated: boolean; loginExempt: boolean };
+      };
+      expect(body.data.updated).toBe(true);
+      expect(body.data.loginExempt).toBe(true);
+    });
+
+    it("disables login exempt flag", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/login-exempt",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loginExempt: false }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { updated: boolean; loginExempt: boolean };
+      };
+      expect(body.data.updated).toBe(true);
+      expect(body.data.loginExempt).toBe(false);
+    });
+
+    it("continues when login-exempt audit log fails", async () => {
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit write failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/u-1/login-exempt",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loginExempt: false }),
         },
         env,
       );

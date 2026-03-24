@@ -13,6 +13,12 @@ describe("observability (re-export from logger)", () => {
   });
 
   describe("log", () => {
+    it("exports logger re-exports from module namespace", async () => {
+      const mod = await import("../observability");
+      expect(typeof mod.log.info).toBe("function");
+      expect(typeof mod.startTimer).toBe("function");
+    });
+
     it("logs debug messages with metadata", () => {
       log.debug("debug-msg", { metadata: { extra: "data" } });
       expect(console.info).toHaveBeenCalledOnce();

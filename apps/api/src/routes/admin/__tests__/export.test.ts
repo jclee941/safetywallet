@@ -160,10 +160,80 @@ describe("admin/export", () => {
       expect(res.headers.get("Content-Type")).toContain("text/csv");
     });
 
+    it("uses page number from query string parser branch", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportUsersQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: true,
+        data: { page: "3" },
+      } as never);
+
+      selectResult = [
+        {
+          id: "u-1",
+          name: "Kim",
+          phoneEncrypted: null,
+          role: "WORKER",
+          createdAt: new Date(),
+        },
+      ];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users?page=3", {}, env);
+
+      expect(res.status).toBe(200);
+      const disposition = res.headers.get("Content-Disposition") || "";
+      expect(disposition).toContain("_p3.csv");
+    });
+
     it("returns 403 for non-admin WORKER", async () => {
       const { app, env } = await createApp(makeAuth("WORKER", false));
       const res = await app.request("/users", {}, env);
       expect(res.status).toBe(403);
+    });
+
+    it("returns 400 when users query validation fails", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportUsersQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: false,
+      } as never);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users?page=oops", {}, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when user export query throws", async () => {
+      selectResult = Promise.reject(new Error("db error"));
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+      expect(res.status).toBe(500);
+    });
+
+    it("returns 500 with non-Error rejection in user export", async () => {
+      selectResult = Promise.reject("string error");
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+      expect(res.status).toBe(500);
+    });
+
+    it("handles null user name and role in CSV output", async () => {
+      selectResult = [
+        {
+          id: "u-1",
+          name: null,
+          phoneEncrypted: null,
+          role: null,
+          createdAt: new Date(),
+        },
+      ];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/users", {}, env);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("u-1");
     });
   });
 
@@ -183,6 +253,86 @@ describe("admin/export", () => {
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/csv");
     });
+
+    it("clamps post export filename page to p1 for non-positive page", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportPostsQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: true,
+        data: { page: 0 },
+      } as never);
+      selectResult = [];
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts", {}, env);
+
+      expect(res.status).toBe(200);
+      const disposition = res.headers.get("Content-Disposition") || "";
+      expect(disposition).toContain("_p1.csv");
+    });
+
+    it("returns 400 when posts query validation fails", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportPostsQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: false,
+      } as never);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts?page=oops", {}, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when post export query throws", async () => {
+      selectResult = Promise.reject(new Error("db error"));
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts", {}, env);
+      expect(res.status).toBe(500);
+    });
+
+    it("uses string page number in posts export", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportPostsQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: true,
+        data: { page: "3" },
+      } as never);
+      selectResult = [];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts?page=3", {}, env);
+
+      expect(res.status).toBe(200);
+      const disposition = res.headers.get("Content-Disposition") || "";
+      expect(disposition).toContain("_p3.csv");
+    });
+
+    it("returns 500 with non-Error rejection in post export", async () => {
+      selectResult = Promise.reject("string error");
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts", {}, env);
+      expect(res.status).toBe(500);
+    });
+
+    it("handles null post category, reviewStatus, and userId in CSV output", async () => {
+      selectResult = [
+        {
+          id: "p-1",
+          content: "test content",
+          category: null,
+          reviewStatus: null,
+          userId: null,
+          createdAt: new Date(),
+        },
+      ];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/posts", {}, env);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("p-1");
+    });
   });
 
   describe("GET /attendance", () => {
@@ -191,6 +341,19 @@ describe("admin/export", () => {
       const res = await app.request("/attendance", {}, env);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/csv");
+    });
+
+    it("returns 400 when attendance query validation fails", async () => {
+      const validators = await import("../../../validators/export");
+      vi.mocked(
+        validators.ExportAttendanceQuerySchema.safeParse,
+      ).mockReturnValueOnce({
+        success: false,
+      } as never);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/attendance?page=oops", {}, env);
+      expect(res.status).toBe(400);
     });
   });
 });

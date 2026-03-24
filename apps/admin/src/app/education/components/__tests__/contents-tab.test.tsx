@@ -65,7 +65,7 @@ vi.mock("@safetywallet/ui", () => ({
     <div>{children}</div>
   ),
   AlertDialogCancel: ({ children }: { children: ReactNode }) => (
-    <button>{children}</button>
+    <button type="button">{children}</button>
   ),
   AlertDialogAction: ({
     children,
@@ -221,6 +221,35 @@ describe("contents tab", () => {
     await waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({ variant: "destructive" }),
+      );
+    });
+  });
+
+  it("opens and closes form with toggle button", () => {
+    render(<ContentsTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /자료 등록/ }));
+    expect(screen.getByText("교육 콘텐츠 등록")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "접기" }));
+    expect(screen.queryByText("교육 콘텐츠 등록")).not.toBeInTheDocument();
+  });
+
+  it("edits existing content", async () => {
+    render(<ContentsTab />);
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[0]);
+    fireEvent.change(screen.getByPlaceholderText("제목"), {
+      target: { value: "수정 콘텐츠" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "교육 콘텐츠 수정" }));
+
+    await waitFor(() => {
+      expect(updateAsyncMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "c1" }),
       );
     });
   });

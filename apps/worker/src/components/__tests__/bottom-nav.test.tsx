@@ -22,7 +22,7 @@ describe("BottomNav", () => {
       (link) => link.getAttribute("href") === "/posts/new",
     );
     expect(centerLink).toBeDefined();
-    expect(centerLink?.textContent).toBe("");
+    expect(centerLink).toHaveTextContent("Create");
   });
 
   it("applies active class for current path", () => {
@@ -34,6 +34,19 @@ describe("BottomNav", () => {
 
     expect(educationLink).toHaveClass("text-blue-400");
     expect(educationLink).not.toHaveClass("text-muted-foreground");
+  });
+
+  it("shows education alert dot and center aria label", () => {
+    setMockPathname("/profile");
+    const { container } = render(<BottomNav />);
+
+    expect(
+      screen.getByRole("link", {
+        name: "translated:nav.createReportAria",
+      }),
+    ).toBeInTheDocument();
+
+    expect(container.querySelector(".bg-red-500")).toBeInTheDocument();
   });
 
   it("renders empty label text when a nav item label is falsy", () => {
@@ -85,5 +98,14 @@ describe("BottomNav", () => {
     expect(label?.textContent).toBe("");
 
     mapSpy.mockRestore();
+  });
+
+  it("renders clipboard-check icon variant on actions routes", () => {
+    setMockPathname("/actions/view");
+    const { container } = render(<BottomNav />);
+
+    expect(
+      container.querySelector('path[d*="m-6 9l2 2 4-4"]'),
+    ).toBeInTheDocument();
   });
 });

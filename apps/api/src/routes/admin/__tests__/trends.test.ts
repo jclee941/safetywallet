@@ -154,10 +154,92 @@ describe("admin/trends", () => {
       expect(body.data.trend.length).toBeGreaterThan(0);
     });
 
+    it("sorts same-day categories alphabetically", async () => {
+      mockAll.mockResolvedValueOnce([
+        {
+          createdAt: new Date("2025-01-15T10:00:00+09:00"),
+          category: "UNSAFE_ACT",
+        },
+        {
+          createdAt: new Date("2025-01-15T09:00:00+09:00"),
+          category: "GOOD_PRACTICE",
+        },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=2025-01-15&endDate=2025-01-17",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { trend: Array<{ category: string }> };
+      };
+      expect(body.data.trend.map((row) => row.category)).toEqual([
+        "GOOD_PRACTICE",
+        "UNSAFE_ACT",
+      ]);
+    });
+
     it("returns 400 when date range is missing", async () => {
       const { app, env } = await createApp(makeAuth());
       const res = await app.request("/trends/posts", {}, env);
       expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for invalid date string", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=not-a-date&endDate=2025-01-17",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("accepts full ISO timestamp dates", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=2025-01-15T10:00:00%2B09:00&endDate=2025-01-17T10:00:00%2B09:00",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("groups pre-cutoff posts to previous day", async () => {
+      mockAll.mockResolvedValueOnce([
+        {
+          createdAt: new Date("2025-01-15T02:00:00+09:00"),
+          category: "UNSAFE_ACT",
+        },
+      ]);
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=2025-01-14&endDate=2025-01-16",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { trend: Array<{ date: string }> };
+      };
+      expect(body.data.trend).toHaveLength(1);
+      expect(body.data.trend[0].date).toBe("2025-01-14");
+    });
+
+    it("filters posts by siteId", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=2025-01-15&endDate=2025-01-17&siteId=site-1",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
     });
 
     it("returns 403 for non-admin", async () => {
@@ -168,6 +250,23 @@ describe("admin/trends", () => {
         env,
       );
       expect(res.status).toBe(403);
+    });
+
+    it("ignores rows with null createdAt", async () => {
+      mockAll.mockResolvedValueOnce([
+        { createdAt: null, category: "UNSAFE_ACT" },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/posts?startDate=2025-01-15&endDate=2025-01-17",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { trend: unknown[] } };
+      expect(body.data.trend).toHaveLength(0);
     });
   });
 
@@ -196,9 +295,51 @@ describe("admin/trends", () => {
       );
     });
 
+    it("keeps non-YYYYMMDD attendance date values unchanged", async () => {
+      mockFasGetAttendanceTrend.mockResolvedValueOnce([
+        { date: "invalid-date", count: 1 },
+      ]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/attendance?startDate=2025-01-15&endDate=2025-01-17",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { trend: Array<{ date: string; count: number }> };
+      };
+      expect(body.data.trend).toEqual([{ date: "invalid-date", count: 1 }]);
+    });
+
     it("returns 400 when date range is missing", async () => {
       const { app, env } = await createApp(makeAuth());
       const res = await app.request("/trends/attendance", {}, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 503 when hyperdrive binding is missing", async () => {
+      const { app, env } = await createApp(makeAuth());
+      env.FAS_HYPERDRIVE = null;
+
+      const res = await app.request(
+        "/trends/attendance?startDate=2025-01-15&endDate=2025-01-17",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(503);
+    });
+
+    it("returns 400 for invalid date range order", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/attendance?startDate=2025-01-17&endDate=2025-01-15",
+        {},
+        env,
+      );
       expect(res.status).toBe(400);
     });
   });
@@ -222,7 +363,20 @@ describe("admin/trends", () => {
       expect(body.data.distribution).toHaveLength(2);
     });
 
-    it("returns 400 when date range is missing", async () => {
+    it("filters points by siteId", async () => {
+      mockAll.mockResolvedValueOnce([
+        { reasonCode: "REPORT_APPROVED", totalAmount: 50, count: 2 },
+      ]);
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/trends/points?startDate=2025-01-15&endDate=2025-01-17&siteId=site-1",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 400 when date range is missing for points", async () => {
       const { app, env } = await createApp(makeAuth());
       const res = await app.request("/trends/points", {}, env);
       expect(res.status).toBe(400);

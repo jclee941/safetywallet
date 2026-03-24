@@ -343,6 +343,42 @@ describe("sites route", () => {
     });
   });
 
+  // ---------- GET /:id/members/:memberId ----------
+
+  describe("GET /:id/members/:memberId", () => {
+    it("returns 403 when WORKER has no membership on the site", async () => {
+      // No membership found → first get returns null
+      mockGetQueue.push(null);
+      const { app, env } = createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "http://localhost/sites/site-1/members/member-1",
+        {},
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when WORKER membership exists but role is WORKER", async () => {
+      // Membership found with WORKER role
+      mockGetQueue.push({
+        id: "membership-1",
+        userId: "user-1",
+        siteId: "site-1",
+        role: "WORKER",
+        status: "ACTIVE",
+      });
+      const { app, env } = createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "http://localhost/sites/site-1/members/member-1",
+        {},
+        env,
+      );
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toContain("Not authorized to view members");
+    });
+  });
+
   // ---------- POST /:id/leave ----------
 
   describe("POST /:id/leave", () => {

@@ -46,8 +46,21 @@ vi.mock("@safetywallet/ui", async () => {
 });
 
 vi.mock("@/components/approvals/reject-dialog", () => ({
-  RejectDialog: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="reject-dialog">reject</div> : null,
+  RejectDialog: ({
+    isOpen,
+    onClose,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+  }) =>
+    isOpen ? (
+      <div data-testid="reject-dialog">
+        reject
+        <button type="button" onClick={onClose}>
+          reject-close
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/hooks/use-api", () => ({
@@ -97,6 +110,15 @@ describe("ApprovalList", () => {
     render(<ApprovalList status="PENDING" selectable />);
     fireEvent.click(screen.getByRole("button", { name: "거절" }));
     expect(screen.getByTestId("reject-dialog")).toBeInTheDocument();
+  });
+
+  it("closes reject dialog via onClose callback", () => {
+    render(<ApprovalList status="PENDING" selectable />);
+    fireEvent.click(screen.getByRole("button", { name: "거절" }));
+    expect(screen.getByTestId("reject-dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "reject-close" }));
+    expect(screen.queryByTestId("reject-dialog")).not.toBeInTheDocument();
   });
 
   it("shows history-only columns and filters pending in history mode", () => {

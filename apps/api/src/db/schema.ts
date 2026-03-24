@@ -60,7 +60,6 @@ export const reviewActionEnum = [
   "ASSIGN",
   "CLOSE",
 ] as const;
-export const taskStatusEnum = ["OPEN", "IN_PROGRESS", "DONE"] as const; // @deprecated - use actionStatusEnum
 export const attendanceResultEnum = ["SUCCESS", "FAIL"] as const;
 export const attendanceSourceEnum = ["FAS", "MANUAL"] as const;
 export const voteCandidateSourceEnum = ["ADMIN", "AUTO"] as const;

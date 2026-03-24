@@ -9,7 +9,28 @@ import {
   formatYearMonth,
   csvEscape,
   buildCsv,
+  getClientIp,
+  requireExportAccess,
+  requireManagerOrAdmin,
+  type AppContext,
 } from "../helpers";
+
+const { mockDbGet } = vi.hoisted(() => {
+  const mockDbGet = vi.fn();
+  return { mockDbGet };
+});
+
+vi.mock("drizzle-orm/d1", () => ({
+  drizzle: vi.fn(() => ({
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          get: mockDbGet,
+        })),
+      })),
+    })),
+  })),
+}));
 
 describe("DAY_CUTOFF_HOUR", () => {
   it("is 5 (5 AM KST cutoff)", () => {
@@ -44,6 +65,24 @@ describe("parseDateParam", () => {
 
   it("returns null for NaN date", () => {
     expect(parseDateParam("9999-99-99")).toBeNull();
+  });
+});
+
+describe("getKstDayRangeFromDate — invalid month/day", () => {
+  it("returns null for month > 12", () => {
+    expect(getKstDayRangeFromDate("2026-13-01")).toBeNull();
+  });
+
+  it("returns null for month < 1", () => {
+    expect(getKstDayRangeFromDate("2026-00-15")).toBeNull();
+  });
+
+  it("returns null for day > 31", () => {
+    expect(getKstDayRangeFromDate("2026-01-32")).toBeNull();
+  });
+
+  it("returns null for day < 1", () => {
+    expect(getKstDayRangeFromDate("2026-01-00")).toBeNull();
   });
 });
 
@@ -271,5 +310,105 @@ describe("getTodayRange", () => {
 
     expect(start.toISOString()).toBe("2026-02-19T20:00:00.000Z");
     expect(end.toISOString()).toBe("2026-02-20T20:00:00.000Z");
+  });
+});
+
+describe("getClientIp", () => {
+  it("returns CF-Connecting-IP when present", async () => {
+    const { Hono } = await import("hono");
+    const app = new Hono();
+    app.get("/test", (c) => c.json({ ip: getClientIp(c) }));
+    const res = await app.request("/test", {
+      headers: { "CF-Connecting-IP": "1.2.3.4" },
+    });
+    const body = (await res.json()) as { ip: string };
+    expect(body.ip).toBe("1.2.3.4");
+  });
+
+  it("falls back to X-Forwarded-For", async () => {
+    const { Hono } = await import("hono");
+    const app = new Hono();
+    app.get("/test", (c) => c.json({ ip: getClientIp(c) }));
+    const res = await app.request("/test", {
+      headers: { "X-Forwarded-For": "5.6.7.8" },
+    });
+    const body = (await res.json()) as { ip: string };
+    expect(body.ip).toBe("5.6.7.8");
+  });
+
+  it("returns unknown when no IP headers present", async () => {
+    const { Hono } = await import("hono");
+    const app = new Hono();
+    app.get("/test", (c) => c.json({ ip: getClientIp(c) }));
+    const res = await app.request("/test");
+    const body = (await res.json()) as { ip: string };
+    expect(body.ip).toBe("unknown");
+  });
+});
+
+describe("requireExportAccess", () => {
+  afterEach(() => {
+    mockDbGet.mockReset();
+  });
+
+  it("calls next when non-SUPER_ADMIN user has canExport", async () => {
+    mockDbGet.mockResolvedValueOnce({ canExport: true });
+    const next = vi.fn();
+    const c = {
+      get: vi.fn().mockReturnValue({ user: { id: "u1", role: "SITE_ADMIN" } }),
+      env: { DB: {} },
+    };
+
+    await requireExportAccess(c as unknown as AppContext, next);
+    expect(next).toHaveBeenCalled();
+  });
+});
+
+describe("requireManagerOrAdmin", () => {
+  afterEach(() => {
+    mockDbGet.mockReset();
+  });
+
+  it("returns 400 when non-admin user has no siteId", async () => {
+    const next = vi.fn();
+    const c = {
+      get: vi.fn().mockReturnValue({ user: { id: "u1", role: "WORKER" } }),
+      env: { DB: {} },
+      req: {
+        query: vi.fn().mockReturnValue(undefined),
+        param: vi.fn().mockReturnValue(undefined),
+      },
+      json: vi.fn().mockReturnValue(new Response()),
+    };
+
+    await requireManagerOrAdmin(c as unknown as AppContext, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(c.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "SITE_ID_REQUIRED" }),
+      }),
+      400,
+    );
+  });
+
+  it("calls next when non-admin user has manager membership", async () => {
+    mockDbGet.mockResolvedValueOnce({
+      role: "MANAGER",
+      userId: "u1",
+      siteId: "s1",
+      status: "ACTIVE",
+    });
+    const next = vi.fn();
+    const c = {
+      get: vi.fn().mockReturnValue({ user: { id: "u1", role: "WORKER" } }),
+      env: { DB: {} },
+      req: {
+        query: vi.fn().mockReturnValue("site-1"),
+        param: vi.fn().mockReturnValue(undefined),
+      },
+    };
+
+    await requireManagerOrAdmin(c as unknown as AppContext, next);
+    expect(next).toHaveBeenCalled();
   });
 });

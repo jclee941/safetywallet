@@ -23,7 +23,10 @@ export function BottomNav() {
       <div className="flex items-center justify-around h-14">
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
-          const Icon = item.icon;
+          const Icon =
+            item.href === "/points" && pathname.startsWith("/actions")
+              ? ClipboardCheckIcon
+              : item.icon;
 
           if (item.isCenter) {
             return (
@@ -74,6 +77,7 @@ function HomeIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
+      <title>Home</title>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -92,6 +96,7 @@ function PlusIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
+      <title>Create</title>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
     </svg>
   );
@@ -106,6 +111,7 @@ function ClipboardCheckIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
+      <title>Actions</title>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -124,6 +130,7 @@ function UserIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
+      <title>Profile</title>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -141,6 +148,7 @@ function WalletIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
+      <title>Wallet</title>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

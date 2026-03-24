@@ -182,6 +182,40 @@ describe("analytics", () => {
         expect(call.blobs[1]).toBe("500");
       }
     });
+
+    it("records UnknownError when non-Error value is thrown", async () => {
+      const env = makeEnv();
+      const c = {
+        req: { method: "GET", path: "/api/non-error-throw" },
+        res: { status: 200 },
+        env,
+      } as unknown as Parameters<typeof analyticsMiddleware>[0];
+
+      await expect(
+        analyticsMiddleware(c, async () => {
+          throw "boom";
+        }),
+      ).rejects.toBe("boom");
+
+      const ae = env.ANALYTICS as { writeDataPoint: ReturnType<typeof vi.fn> };
+      const call = ae.writeDataPoint.mock.calls[0][0];
+      expect(call.blobs[2]).toBe("UnknownError");
+    });
+
+    it("uses executionCtx.waitUntil when available", async () => {
+      const env = makeEnv();
+      const waitUntil = vi.fn();
+      const c = {
+        req: { method: "GET", path: "/api/metrics" },
+        res: { status: 200 },
+        env,
+        executionCtx: { waitUntil },
+      } as unknown as Parameters<typeof analyticsMiddleware>[0];
+
+      await analyticsMiddleware(c, async () => undefined);
+
+      expect(waitUntil).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ---------- trackEvent ----------

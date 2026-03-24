@@ -255,6 +255,31 @@ describe("routes/admin/points", () => {
     expect(mockDb.select).not.toHaveBeenCalled();
   });
 
+  it("returns 400 for CORRECTION with negative correctedAmount", async () => {
+    const { app, env } = await createApp(
+      "SITE_ADMIN",
+      vi.fn().mockResolvedValue(null),
+    );
+
+    const res = await app.request(
+      "/points/correct",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ledgerId: ORIGINAL.id,
+          reason: "Negative amount",
+          correctionType: "CORRECTION",
+          correctedAmount: -1,
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockDb.select).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when original ledger is missing", async () => {
     enqueueGets(null);
     const { app, env } = await createApp(
@@ -391,5 +416,149 @@ describe("routes/admin/points", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+
+  it("enqueues notification when subscriptions exist", async () => {
+    enqueueGets(ORIGINAL, ACTIVE_MEMBERSHIP, null);
+    enqueueAll([
+      {
+        id: "sub-1",
+        userId: ORIGINAL.userId,
+        endpoint: "https://push.example/1",
+        p256dh: "p256dh",
+        auth: "auth",
+        failCount: 0,
+      },
+    ]);
+
+    const { app, env } = await createApp(
+      "SITE_ADMIN",
+      vi.fn().mockResolvedValue(null),
+    );
+    env.NOTIFICATION_QUEUE = { send: vi.fn() };
+
+    const res = await app.request(
+      "/points/correct",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ledgerId: ORIGINAL.id,
+          reason: "Notify worker",
+          correctionType: "REVOKE",
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockEnqueueNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("covers postId ?? undefined when original has no postId", async () => {
+    const noPostOriginal = { ...ORIGINAL, postId: null };
+    enqueueGets(noPostOriginal, ACTIVE_MEMBERSHIP, null);
+    const kvGet = vi.fn().mockResolvedValue(null);
+    const { app, env } = await createApp("SITE_ADMIN", kvGet);
+
+    const res = await app.request(
+      "/points/correct",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ledgerId: ORIGINAL.id,
+          reason: "No postId",
+          correctionType: "REVOKE",
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("logs non-Error notification failure", async () => {
+    enqueueGets(ORIGINAL, ACTIVE_MEMBERSHIP, null);
+    enqueueAll([
+      {
+        id: "sub-1",
+        userId: ORIGINAL.userId,
+        endpoint: "https://push.example/1",
+        p256dh: "p256dh",
+        auth: "auth",
+        failCount: 0,
+      },
+    ]);
+    mockEnqueueNotification.mockRejectedValueOnce("string-error");
+
+    const { app, env } = await createApp(
+      "SITE_ADMIN",
+      vi.fn().mockResolvedValue(null),
+    );
+    env.NOTIFICATION_QUEUE = { send: vi.fn() };
+
+    const res = await app.request(
+      "/points/correct",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ledgerId: ORIGINAL.id,
+          reason: "String error",
+          correctionType: "REVOKE",
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        error: expect.objectContaining({
+          name: "UnknownError",
+          message: "string-error",
+        }),
+      }),
+    );
+  });
+
+  it("returns 200 even when notification enqueue fails", async () => {
+    enqueueGets(ORIGINAL, ACTIVE_MEMBERSHIP, null);
+    enqueueAll([
+      {
+        id: "sub-1",
+        userId: ORIGINAL.userId,
+        endpoint: "https://push.example/1",
+        p256dh: "p256dh",
+        auth: "auth",
+        failCount: 0,
+      },
+    ]);
+    mockEnqueueNotification.mockRejectedValueOnce(new Error("queue failure"));
+
+    const { app, env } = await createApp(
+      "SITE_ADMIN",
+      vi.fn().mockResolvedValue(null),
+    );
+    env.NOTIFICATION_QUEUE = { send: vi.fn() };
+
+    const res = await app.request(
+      "/points/correct",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ledgerId: ORIGINAL.id,
+          reason: "Queue fail",
+          correctionType: "REVOKE",
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
   });
 });

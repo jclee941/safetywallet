@@ -9,6 +9,7 @@ const invalidateQueriesMock = vi.fn();
 const mutateMock = vi.fn();
 const useQueryMock = vi.fn();
 const useMutationMock = vi.fn();
+let currentSiteId: string | null = "site-1";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, back: backMock }),
@@ -18,7 +19,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/stores/auth", () => ({
   useAuthStore: (
     selector: (s: { currentSiteId: string | null }) => string | null,
-  ) => selector({ currentSiteId: "site-1" }),
+  ) => selector({ currentSiteId }),
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -59,6 +60,7 @@ vi.mock("@safetywallet/ui", () => ({
 
 describe("add candidate page", () => {
   beforeEach(() => {
+    currentSiteId = "site-1";
     pushMock.mockReset();
     backMock.mockReset();
     invalidateQueriesMock.mockReset();
@@ -110,5 +112,42 @@ describe("add candidate page", () => {
     });
     expect(invalidateQueriesMock).toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/votes/2026-02");
+  });
+
+  it("shows site-required message when no site is selected", () => {
+    currentSiteId = null;
+    render(<AddCandidatePage />);
+
+    expect(screen.getByText("현장을 선택해주세요.")).toBeInTheDocument();
+    expect(screen.queryByText("후보자 등록")).not.toBeInTheDocument();
+  });
+
+  it("renders fallback values and pending registration state", () => {
+    useQueryMock.mockReturnValueOnce({
+      data: {
+        users: [
+          {
+            id: "u2",
+            name: "김민수",
+            nameMasked: null,
+            companyName: null,
+            tradeType: null,
+            role: "WORKER",
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+    });
+    useMutationMock.mockReturnValueOnce({
+      mutate: mutateMock,
+      isPending: true,
+    });
+
+    render(<AddCandidatePage />);
+
+    expect(screen.getByText("김민수")).toBeInTheDocument();
+    expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("button", { name: "등록 중..." })).toBeDisabled();
   });
 });

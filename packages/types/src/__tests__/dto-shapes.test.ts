@@ -79,7 +79,6 @@ import type {
   UpdatePolicyDto,
   UpdateQuizDto,
   UpdateSiteDto,
-  UpdateTbmRecordDto,
   UserDto,
   UserProfileDto,
   VoteCandidateDto,

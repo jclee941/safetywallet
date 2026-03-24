@@ -7,9 +7,46 @@ type AppEnv = {
 };
 
 vi.mock("../../middleware/auth", () => ({
-  authMiddleware: vi.fn(async (_c: unknown, next: () => Promise<void>) =>
-    next(),
+  authMiddleware: vi.fn(
+    async (
+      c: {
+        get: (key: string) => unknown;
+        json: (body: unknown, status?: number) => Response;
+      },
+      next: () => Promise<void>,
+    ) => {
+      if (!c.get("auth")) {
+        return c.json(
+          {
+            success: false,
+            error: { code: "UNAUTHORIZED", message: "Unauthorized" },
+          },
+          401,
+        );
+      }
+      return next();
+    },
   ),
+}));
+
+vi.mock("../../lib/auth.ts", () => ({}));
+
+vi.mock("@hono/zod-validator", () => ({
+  zValidator: (_target: string, _schema: unknown) => {
+    return async (
+      c: {
+        req: {
+          json: () => Promise<unknown>;
+          addValidatedData: (target: string, data: unknown) => void;
+        };
+      },
+      next: () => Promise<void>,
+    ) => {
+      const body = await c.req.json();
+      c.req.addValidatedData("json", body);
+      await next();
+    };
+  },
 }));
 
 vi.mock("../../lib/audit", () => ({
@@ -37,7 +74,9 @@ function makeChain() {
   chain.where = vi.fn(proxy);
   chain.orderBy = vi.fn(proxy);
   chain.limit = vi.fn(proxy);
-  chain.offset = vi.fn(proxy);
+  chain.offset = vi.fn(() =>
+    Object.assign(Promise.resolve(mockAll()), { all: mockAll, get: mockGet }),
+  );
   chain.get = mockGet;
   chain.all = mockAll;
   return chain;
@@ -201,6 +240,58 @@ describe("routes/disputes", () => {
       );
       expect(res.status).toBe(400);
     });
+
+    it("returns 401 when auth context is missing", async () => {
+      const { app, env } = await createApp();
+      const res = await app.request(
+        "/disputes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(validBody),
+        },
+        env,
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid dispute type", async () => {
+      mockGet.mockResolvedValue({
+        userId: "user-1",
+        siteId: SITE_ID,
+        status: "ACTIVE",
+      });
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "/disputes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...validBody, type: "BAD_TYPE" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when required create fields are empty", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "/disputes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "",
+            type: "",
+            title: "",
+            description: "",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("GET /disputes/my", () => {
@@ -222,6 +313,36 @@ describe("routes/disputes", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { data: { data: unknown[] } };
       expect(body.data.data).toHaveLength(0);
+    });
+
+    it("filters disputes by status query param", async () => {
+      mockAll.mockResolvedValue([
+        { id: "d1", title: "Open dispute", status: "OPEN" },
+      ]);
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request("/disputes/my?status=OPEN", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { data: unknown[] } };
+      expect(body.data.data).toHaveLength(1);
+    });
+
+    it("lists disputes from GET /disputes alias endpoint", async () => {
+      mockAll.mockResolvedValue([{ id: "d-alias-1", status: "OPEN" }]);
+
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request("/disputes?status=OPEN&limit=5", {}, env);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          disputes: unknown;
+          limit: number;
+          offset: number;
+        };
+      };
+      expect(body.data.disputes).toBeDefined();
+      expect(body.data.limit).toBe(5);
+      expect(body.data.offset).toBe(0);
     });
   });
 
@@ -248,6 +369,39 @@ describe("routes/disputes", () => {
         status: "OPEN",
       });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN", "admin-1"));
+      const res = await app.request(`/disputes/${DISPUTE_ID}`, {}, env);
+      expect(res.status).toBe(200);
+    });
+
+    it("returns dispute for SITE_ADMIN even if not owner", async () => {
+      mockGet.mockResolvedValue({
+        id: DISPUTE_ID,
+        userId: "other-user",
+        siteId: SITE_ID,
+        title: "Test",
+        status: "OPEN",
+      });
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN", "admin-1"));
+      const res = await app.request(`/disputes/${DISPUTE_ID}`, {}, env);
+      expect(res.status).toBe(200);
+    });
+
+    it("returns dispute for non-owner with SITE_ADMIN membership", async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          id: DISPUTE_ID,
+          userId: "other-user",
+          siteId: SITE_ID,
+          title: "Test",
+          status: "OPEN",
+        })
+        .mockResolvedValueOnce({
+          userId: "user-1",
+          siteId: SITE_ID,
+          role: "SITE_ADMIN",
+          status: "ACTIVE",
+        });
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
       const res = await app.request(`/disputes/${DISPUTE_ID}`, {}, env);
       expect(res.status).toBe(200);
     });
@@ -292,6 +446,34 @@ describe("routes/disputes", () => {
       const { app, env } = await createApp(makeAuth("WORKER"));
       const res = await app.request(`/disputes/site/${SITE_ID}`, {}, env);
       expect(res.status).toBe(403);
+    });
+
+    it("filters site disputes by status query param", async () => {
+      mockAll.mockResolvedValue([{ id: "d1", title: "Open", status: "OPEN" }]);
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        `/disputes/site/${SITE_ID}?status=OPEN`,
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { data: unknown[] } };
+      expect(body.data.data).toHaveLength(1);
+    });
+
+    it("returns site disputes for SITE_ADMIN with valid membership", async () => {
+      mockGet.mockResolvedValue({
+        userId: "admin-1",
+        siteId: SITE_ID,
+        role: "SITE_ADMIN",
+        status: "ACTIVE",
+      });
+      mockAll.mockResolvedValue([
+        { id: "d1", title: "Site Dispute", status: "OPEN" },
+      ]);
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN", "admin-1"));
+      const res = await app.request(`/disputes/site/${SITE_ID}`, {}, env);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -381,6 +563,39 @@ describe("routes/disputes", () => {
       );
       expect(res.status).toBe(403);
     });
+
+    it("returns 400 when resolution note is missing", async () => {
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        `/disputes/${DISPUTE_ID}/resolve`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "RESOLVED" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when resolve status is not RESOLVED or REJECTED", async () => {
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        `/disputes/${DISPUTE_ID}/resolve`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "IN_REVIEW",
+            resolutionNote: "invalid transition",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("PATCH /disputes/:id/status", () => {
@@ -440,6 +655,47 @@ describe("routes/disputes", () => {
         env,
       );
       expect(res.status).toBe(403);
+    });
+
+    it("returns 400 for invalid status payload", async () => {
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        `/disputes/${DISPUTE_ID}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "NOT_A_STATUS" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when audit logging fails after status update", async () => {
+      const audit = await import("../../lib/audit");
+      vi.mocked(audit.logAuditWithContext).mockRejectedValueOnce(
+        new Error("audit write failed"),
+      );
+      mockGet.mockResolvedValue({
+        id: DISPUTE_ID,
+        siteId: SITE_ID,
+        status: "OPEN",
+      });
+      mockUpdateReturning.mockReturnValue([
+        { id: DISPUTE_ID, status: "IN_REVIEW" },
+      ]);
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        `/disputes/${DISPUTE_ID}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "IN_REVIEW" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(500);
     });
   });
 });

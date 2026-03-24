@@ -1,5 +1,3 @@
-import { QuizQuestion } from "@/hooks/use-api";
-
 export type QuestionType =
   | "SINGLE_CHOICE"
   | "OX"

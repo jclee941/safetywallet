@@ -8,9 +8,27 @@ vi.mock("recharts", () => ({
     <div>{children}</div>
   ),
   PieChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Pie: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Pie: ({
+    children,
+    data,
+  }: {
+    children: ReactNode;
+    data?: Array<{ name: string }>;
+  }) => (
+    <div>
+      {data?.map((item) => (
+        <span key={item.name}>{item.name}</span>
+      ))}
+      {children}
+    </div>
+  ),
   Cell: () => null,
-  Tooltip: () => null,
+  Tooltip: ({ formatter }: { formatter?: (value: unknown) => string }) => (
+    <div>
+      <span data-testid="tooltip-number">{formatter?.(1234)}</span>
+      <span data-testid="tooltip-null">{formatter?.(null)}</span>
+    </div>
+  ),
   Legend: () => null,
 }));
 
@@ -29,5 +47,24 @@ describe("PointsChart", () => {
     expect(
       screen.getByText("선택 기간의 reasonCode 별 지급/회수 합계"),
     ).toBeInTheDocument();
+  });
+
+  it("uses label fallback, sorts data, and covers tooltip formatter branches", () => {
+    render(
+      <PointsChart
+        data={[
+          { reasonCode: "UNKNOWN", totalAmount: 200, count: 2 },
+          { reasonCode: "ATTENDANCE_REWARD", totalAmount: 100, count: 1 },
+        ]}
+      />,
+    );
+
+    const labels = screen
+      .getAllByText(/UNKNOWN|출근 보상/)
+      .map((el) => el.textContent);
+    expect(labels[0]).toBe("UNKNOWN");
+    expect(labels[1]).toBe("출근 보상");
+    expect(screen.getByTestId("tooltip-number")).toHaveTextContent("1,234");
+    expect(screen.getByTestId("tooltip-null")).toHaveTextContent("");
   });
 });

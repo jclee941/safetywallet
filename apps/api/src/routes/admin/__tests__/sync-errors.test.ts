@@ -187,6 +187,22 @@ describe("admin/sync-errors", () => {
       expect(res.status).toBe(400);
     });
 
+    it("filters by syncType query param", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      mockGet.mockResolvedValueOnce({ count: 0 });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/sync-errors?syncType=FAS", {}, env);
+      expect(res.status).toBe(200);
+    });
+
+    it("filters by siteId query param", async () => {
+      mockAll.mockResolvedValueOnce([]);
+      mockGet.mockResolvedValueOnce({ count: 0 });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/sync-errors?siteId=site-1", {}, env);
+      expect(res.status).toBe(200);
+    });
+
     it("accepts valid status filter", async () => {
       mockAll.mockResolvedValueOnce([]);
       mockGet.mockResolvedValueOnce({ count: 0 });
@@ -225,6 +241,20 @@ describe("admin/sync-errors", () => {
         env,
       );
       expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for invalid status in resolve body", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/sync-errors/e-1/status",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "INVALID" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
     });
 
     it("returns 403 for non-admin", async () => {

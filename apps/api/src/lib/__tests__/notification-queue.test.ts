@@ -109,6 +109,17 @@ describe("notification-queue", () => {
         enqueueNotification(mockQueue as unknown as Queue, makeQueueMessage()),
       ).rejects.toThrow("Queue full");
     });
+
+    it("rethrows non-Error queue failures", async () => {
+      const { enqueueNotification } = await import("../notification-queue");
+      const mockQueue = {
+        send: vi.fn().mockRejectedValue("queue-string-error"),
+      };
+
+      await expect(
+        enqueueNotification(mockQueue as unknown as Queue, makeQueueMessage()),
+      ).rejects.toBe("queue-string-error");
+    });
   });
 
   describe("processNotificationBatch", () => {
@@ -188,6 +199,39 @@ describe("notification-queue", () => {
         await import("../notification-queue");
 
       mockSendPushBulk.mockRejectedValue(new Error("Push service down"));
+
+      const ack = vi.fn();
+      const retry = vi.fn();
+      const batch = {
+        messages: [
+          {
+            body: makeQueueMessage(),
+            ack,
+            retry,
+            id: "msg-1",
+            timestamp: new Date(),
+            attempts: 1,
+          },
+        ],
+        retryAll: vi.fn(),
+        ackAll: vi.fn(),
+        queue: "notification-queue",
+      } as unknown as MessageBatch<NotificationQueueMessage>;
+
+      await processNotificationBatch(
+        batch,
+        makeEnv() as unknown as import("../../types").Env,
+      );
+
+      expect(retry).toHaveBeenCalled();
+      expect(ack).not.toHaveBeenCalled();
+    });
+
+    it("retries when processing throws a non-Error value", async () => {
+      const { processNotificationBatch } =
+        await import("../notification-queue");
+
+      mockSendPushBulk.mockRejectedValue("push-string-error");
 
       const ack = vi.fn();
       const retry = vi.fn();

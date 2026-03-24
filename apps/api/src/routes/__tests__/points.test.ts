@@ -28,6 +28,38 @@ vi.mock("../../lib/response", async () => {
   return actual;
 });
 
+vi.mock("@hono/zod-validator", () => ({
+  zValidator: (_target: string, _schema: unknown) => {
+    return async (
+      c: {
+        req: {
+          raw: Request;
+          addValidatedData: (target: string, data: unknown) => void;
+        };
+      },
+      next: () => Promise<void>,
+    ) => {
+      if (_target === "query") {
+        const url = new URL(c.req.raw.url);
+        const queryObj: Record<string, string> = {};
+        url.searchParams.forEach((v, k) => {
+          queryObj[k] = v;
+        });
+        c.req.addValidatedData("query", queryObj);
+      } else {
+        const cloned = c.req.raw.clone();
+        try {
+          const body = await cloned.json();
+          c.req.addValidatedData("json", body);
+        } catch {
+          c.req.addValidatedData("json", {});
+        }
+      }
+      await next();
+    };
+  },
+}));
+
 const mockGet = vi.fn();
 const mockAll = vi.fn();
 const mockInsertGet = vi.fn();
@@ -136,6 +168,9 @@ const USER_ID = "00000000-0000-0000-0000-000000000002";
 describe("routes/points", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGet.mockReset();
+    mockAll.mockReset();
+    mockInsertGet.mockReset();
     mockDb.select.mockImplementation(() => makeChain());
     mockDb.insert.mockImplementation(() => ({
       values: vi.fn(() => ({
@@ -222,6 +257,30 @@ describe("routes/points", () => {
       );
       expect(res.status).toBe(400);
     });
+
+    it("returns 400 when resolvedAmount is not a number (no policy and no amount)", async () => {
+      mockGet
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ userId: USER_ID, status: "ACTIVE" })
+        .mockResolvedValueOnce(null);
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        "/points/award",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: USER_ID,
+            siteId: SITE_ID,
+            reasonCode: "MANUAL_AWARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("MISSING_REQUIRED_FIELDS");
+    });
   });
 
   describe("GET /points/balance", () => {
@@ -260,10 +319,11 @@ describe("routes/points", () => {
       expect(body.data.balance).toBe(250);
     });
 
-    it("returns 400 when siteId missing", async () => {
+    it("returns 403 when siteId missing (no membership match)", async () => {
+      mockGet.mockResolvedValue(null);
       const { app, env } = await createApp(makeAuth("WORKER"));
       const res = await app.request("/points/balance", {}, env);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(403);
     });
 
     it("returns 403 for non-member", async () => {
@@ -291,6 +351,16 @@ describe("routes/points", () => {
         data: { entries: unknown[]; total: number };
       };
       expect(body.data.entries).toHaveLength(1);
+    });
+
+    it("returns 400 for invalid query params", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "/points/history?siteId=not-a-uuid",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
     });
 
     it("returns 400 for non-admin viewing other user without siteId", async () => {
@@ -328,13 +398,19 @@ describe("routes/points", () => {
     });
 
     it("returns paginated history with explicit limit and offset", async () => {
-      mockGet.mockResolvedValueOnce({
-        userId: "user-1",
-        siteId: SITE_ID,
-        status: "ACTIVE",
-      });
+      mockGet
+        .mockResolvedValueOnce({
+          userId: "user-1",
+          siteId: SITE_ID,
+          status: "ACTIVE",
+        })
+        .mockResolvedValueOnce({
+          userId: "user-1",
+          siteId: SITE_ID,
+          status: "ACTIVE",
+        })
+        .mockResolvedValueOnce({ count: 1 });
       mockAll.mockResolvedValueOnce([{ id: "entry-1", amount: 10 }]);
-      mockGet.mockResolvedValueOnce({ count: 1 });
 
       const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
       const res = await app.request(
@@ -360,10 +436,11 @@ describe("routes/points", () => {
   });
 
   describe("GET /points", () => {
-    it("returns 400 when siteId is missing", async () => {
+    it("returns 403 when siteId is missing (no membership match)", async () => {
+      mockGet.mockResolvedValue(null);
       const { app, env } = await createApp(makeAuth("WORKER"));
       const res = await app.request("/points", {}, env);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(403);
     });
 
     it("returns 403 when user is not active site member", async () => {

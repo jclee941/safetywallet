@@ -10,7 +10,6 @@ import { UserRole } from "@safetywallet/types";
 export default function LoginPage() {
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
-  const logout = useAuthStore((s) => s.logout);
   const setSiteId = useAuthStore((s) => s.setSiteId);
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin);

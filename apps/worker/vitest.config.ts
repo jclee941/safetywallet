@@ -22,6 +22,10 @@ export default defineConfig({
         "src/__tests__/**",
         "src/**/*.test.{ts,tsx}",
         "src/app/layout.tsx",
+        "src/hooks/use-api-base.ts",
+        "src/hooks/use-api.ts",
+        "src/i18n/index.ts",
+        "src/lib/utils.ts",
       ],
       thresholds: {
         lines: 0,

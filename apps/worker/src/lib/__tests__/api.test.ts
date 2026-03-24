@@ -287,6 +287,28 @@ describe("api.ts", () => {
     });
   });
 
+  it("apiFetch returns null for empty successful responses", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("", { status: 200 }));
+
+    const result = await apiFetch<null>("/empty");
+    expect(result).toBeNull();
+  });
+
+  it("apiFetch throws ApiError for invalid successful JSON payload", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("not-json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(apiFetch("/invalid-json")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 200,
+      message: "Invalid response payload",
+    });
+  });
+
   it("apiFetch retries original request after successful refresh on 401", async () => {
     fetchMock
       .mockResolvedValueOnce(new Response("unauthorized", { status: 401 }))
@@ -640,5 +662,20 @@ describe("api.ts", () => {
         value: originalNavigator,
       });
     }
+  });
+
+  it("migrates legacy localStorage queue key at module load", async () => {
+    localStorage.setItem(
+      "safework2_offline_queue",
+      JSON.stringify([{ id: 1 }]),
+    );
+
+    vi.resetModules();
+    await import("@/lib/api");
+
+    expect(localStorage.getItem("safetywallet_offline_queue")).toBe(
+      JSON.stringify([{ id: 1 }]),
+    );
+    expect(localStorage.getItem("safework2_offline_queue")).toBeNull();
   });
 });

@@ -16,7 +16,6 @@ import {
   siteMemberships,
   users,
   pointsLedger,
-  auditLogs,
 } from "../db/schema";
 
 const app = new Hono<{

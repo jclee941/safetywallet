@@ -15,6 +15,11 @@ export default defineConfig({
         "src/**/*.d.ts",
         "src/__tests__/**",
         "src/db/schema.ts",
+        "src/routes/admin/fas/types.ts",
+        "src/validators/schemas/index.ts",
+        "src/lib/observability.ts",
+        "src/lib/fas-mariadb/index.ts",
+        "src/lib/fas/index.ts",
       ],
       thresholds: {
         lines: 0,

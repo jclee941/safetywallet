@@ -373,6 +373,37 @@ describe("state-machine", () => {
         expect(result.valid).toBe(false);
       });
     });
+
+    it("returns unknown action error for invalid action", () => {
+      const result = validateReviewTransition(
+        "INVALID_ACTION" as unknown as "APPROVE",
+        "PENDING",
+        "NONE",
+        "SITE_ADMIN",
+      );
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("알 수 없는 액션");
+    });
+
+    it("falls back to IN_REVIEW for unexpected action in status resolver", () => {
+      Reflect.set(
+        Object.prototype as Record<string, unknown>,
+        "__TEST_FAKE_REVIEW_ACTION__",
+        ["PENDING"],
+      );
+      try {
+        const result = validateReviewTransition(
+          "__TEST_FAKE_REVIEW_ACTION__" as unknown as "APPROVE",
+          "PENDING",
+          "NONE",
+          "SITE_ADMIN",
+        );
+        expect(result.valid).toBe(true);
+        expect(result.newReviewStatus).toBe("IN_REVIEW");
+      } finally {
+        Reflect.deleteProperty(Object.prototype, "__TEST_FAKE_REVIEW_ACTION__");
+      }
+    });
   });
 
   // ---------- validateActionTransition ----------

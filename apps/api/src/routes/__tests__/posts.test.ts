@@ -34,6 +34,11 @@ vi.mock("../../lib/phash", () => ({
   DUPLICATE_THRESHOLD: 10,
 }));
 
+vi.mock("../../lib/gemini-ai", () => ({
+  getAiCredentials: vi.fn(() => null),
+  classifyPost: vi.fn(async () => ({ suggestedRiskLevel: "LOW" })),
+}));
+
 const mockGetQueue: unknown[] = [];
 const mockAllQueue: unknown[] = [];
 
@@ -81,9 +86,20 @@ function makeInsertChain() {
 const mockDeleteWhere = vi.fn().mockResolvedValue({ success: true });
 const mockBatch = vi.fn().mockResolvedValue([]);
 
+function makeUpdateChain() {
+  const chain: Record<string, unknown> = {};
+  chain.set = vi.fn(() => chain);
+  chain.where = vi.fn(() => chain);
+  chain.returning = vi.fn(() => chain);
+  chain.get = vi.fn(() => dequeueReturningGet());
+  chain.run = vi.fn(async () => ({ success: true }));
+  return chain;
+}
+
 const mockDb = {
   select: vi.fn(() => makeSelectChain()),
   insert: vi.fn(() => makeInsertChain()),
+  update: vi.fn(() => makeUpdateChain()),
   delete: vi.fn(() => ({
     where: mockDeleteWhere,
   })),
@@ -115,6 +131,8 @@ vi.mock("../../db/schema", () => ({
     reviewStatus: "reviewStatus",
     actionStatus: "actionStatus",
     isUrgent: "isUrgent",
+    clientMutationId: "clientMutationId",
+    hazardSubcategory: "hazardSubcategory",
   },
   postImages: {
     id: "id",
@@ -137,6 +155,24 @@ vi.mock("../../db/schema", () => ({
   },
   reviews: {
     postId: "postId",
+  },
+  pointsLedger: {
+    id: "id",
+    userId: "userId",
+    siteId: "siteId",
+    postId: "postId",
+    amount: "amount",
+    reasonCode: "reasonCode",
+    reasonText: "reasonText",
+    settleMonth: "settleMonth",
+    occurredAt: "occurredAt",
+    createdAt: "createdAt",
+  },
+  pointPolicies: {
+    siteId: "siteId",
+    reasonCode: "reasonCode",
+    defaultAmount: "defaultAmount",
+    isActive: "isActive",
   },
   auditLogs: {
     action: "action",
@@ -183,6 +219,7 @@ async function createApp(auth?: AuthContext) {
     R2: {
       put: vi.fn(),
       delete: vi.fn(),
+      get: vi.fn(),
     },
   } as Record<string, unknown>;
   return { app, env };
@@ -324,6 +361,39 @@ describe("routes/posts", () => {
       expect(body.error.code).toBe("POST_CREATION_FAILED");
     });
 
+    it("returns deduplicated response when clientMutationId already exists", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "existing-post-id" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "dedupe content with enough length",
+            category: "HAZARD",
+            clientMutationId: "00000000-0000-4000-8000-000000000123",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { id: string; deduplicated: boolean };
+      };
+      expect(body.data.id).toBe("existing-post-id");
+      expect(body.data.deduplicated).toBe(true);
+    });
+
     it("creates post with imageUrls and imageHashes", async () => {
       mockGetQueue.push({ restrictedUntil: null });
       mockGetQueue.push({
@@ -417,6 +487,696 @@ describe("routes/posts", () => {
       );
       expect(res.status).toBe(201);
     });
+
+    it("uses executionCtx.waitUntil for async auto AI classification", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "test-model",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedRiskLevel: "HIGH",
+      } as never);
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({
+        id: "post-ai-1",
+        userId: "user-1",
+        siteId: "site-1",
+        content: "content for ai",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      r2.R2.get.mockResolvedValueOnce({
+        arrayBuffer: async () => new TextEncoder().encode("image").buffer,
+        httpMetadata: { contentType: "image/jpeg" },
+      });
+
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "ai classification target content",
+            category: "HAZARD",
+            imageUrls: ["/r2/posts/post-ai-1/image.jpg"],
+          }),
+        },
+        env,
+        executionCtx,
+      );
+
+      await Promise.all(pending);
+
+      expect(res.status).toBe(201);
+      expect(executionCtx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(classifyPost).toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    it("creates post with non-HAZARD category setting hazardSubcategory to null", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({
+        id: "p-sug",
+        category: "SUGGESTION",
+        siteId: "site-1",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "SUGGESTION",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("creates post when clientMutationId has no match", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push(null);
+      mockGetQueue.push({ id: "p-new", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            clientMutationId: "00000000-0000-4000-8000-000000000001",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("detects location duplicate with hazardType", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "dup-1" });
+      mockGetQueue.push({
+        id: "p-dup2",
+        siteId: "site-1",
+        isPotentialDuplicate: true,
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            locationFloor: "B1",
+            locationZone: "A",
+            hazardType: "FALL",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("handles location check when no duplicate found", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push(null);
+      mockGetQueue.push({ id: "p-nodup", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            locationFloor: "B1",
+            locationZone: "A",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("skips duplicate check when only locationFloor provided", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-floor", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            locationFloor: "B1",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("marks post as potential duplicate when content similarity found", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockAllQueue.push([{ id: "sim-1" }]);
+      mockGetQueue.push({
+        id: "p-sim",
+        siteId: "site-1",
+        isPotentialDuplicate: true,
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "hello world testing keywords enough",
+            category: "HAZARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("skips content similarity when fewer than 2 keywords", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-1kw", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "aaaaaaaaaa",
+            category: "HAZARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("skips null entries in imageHashes", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockAllQueue.push([]);
+      mockGetQueue.push({ id: "p-nullhash", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            imageUrls: ["url1", "url2"],
+            imageHashes: [null, "abc123def4567890"],
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("auto-awards points when POST_SUBMITTED policy exists", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-pts", siteId: "site-1" });
+      mockGetQueue.push({
+        defaultAmount: 10,
+        name: "Post Reward",
+        siteId: "site-1",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+      expect(mockDb.insert).toHaveBeenCalledTimes(2);
+    });
+
+    it("catches Error when points insert fails", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-pterr", siteId: "site-1" });
+      mockGetQueue.push({
+        defaultAmount: 10,
+        name: "Reward",
+        siteId: "site-1",
+      });
+      mockDb.insert
+        .mockImplementationOnce(() => makeInsertChain())
+        .mockImplementationOnce(() => {
+          throw new Error("DB fail");
+        });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("catches non-Error when points insert fails", async () => {
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-ptstr", siteId: "site-1" });
+      mockGetQueue.push({
+        defaultAmount: 10,
+        name: "Reward",
+        siteId: "site-1",
+      });
+      mockDb.insert
+        .mockImplementationOnce(() => makeInsertChain())
+        .mockImplementationOnce(() => {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw "string error";
+        });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("AI: skips image data when no imageUrls and handles null classification", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce(null);
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-ainull", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it("AI: skips R2 when imageUrl is empty string", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedRiskLevel: "LOW",
+      } as never);
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-aiempty", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            imageUrls: [""],
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+    });
+
+    it("AI: skips image data when R2 returns null", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedRiskLevel: "LOW",
+      } as never);
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-air2null", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      r2.R2.get.mockResolvedValueOnce(null);
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            imageUrls: ["/r2/posts/p1/img.jpg"],
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+    });
+
+    it("AI: falls back to image/jpeg when no contentType", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedRiskLevel: "LOW",
+      } as never);
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-notype", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      r2.R2.get.mockResolvedValueOnce({
+        arrayBuffer: vi.fn(async () => new ArrayBuffer(8)),
+        httpMetadata: {},
+      });
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+            imageUrls: ["/r2/posts/p1/img.jpg"],
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+    });
+
+    it("AI: catches Error thrown by classifyPost", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockRejectedValueOnce(new Error("AI fail"));
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-aierr", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+    });
+
+    it("AI: catches non-Error thrown by classifyPost", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "k",
+        textModel: "m",
+      });
+      vi.mocked(classifyPost).mockRejectedValueOnce("string failure");
+
+      mockGetQueue.push({ restrictedUntil: null });
+      mockGetQueue.push({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+      });
+      mockGetQueue.push({ id: "p-aistr", siteId: "site-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const pending: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil: vi.fn((p: Promise<unknown>) => {
+          pending.push(p);
+        }),
+        passThroughOnException: vi.fn(),
+        props: {},
+      };
+
+      const res = await app.request(
+        "/posts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            content: "Short",
+            category: "HAZARD",
+          }),
+        },
+        env,
+        executionCtx,
+      );
+      await Promise.allSettled(pending);
+      expect(res.status).toBe(201);
+    });
   });
 
   describe("GET /posts", () => {
@@ -483,6 +1243,19 @@ describe("routes/posts", () => {
       expect(res.status).toBe(200);
     });
 
+    it("filters by hazardSubcategory", async () => {
+      mockAllQueue.push([]);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts?siteId=s1&category=HAZARD&hazardSubcategory=FALL",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
     it("returns empty when no posts", async () => {
       mockAllQueue.push([]);
 
@@ -491,6 +1264,18 @@ describe("routes/posts", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { data: { posts: unknown[] } };
       expect(body.data.posts).toHaveLength(0);
+    });
+
+    it("returns 400 for invalid category filter", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts?category=INVALID_CATEGORY",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("INVALID_QUERY");
     });
   });
 
@@ -753,6 +1538,81 @@ describe("routes/posts", () => {
       const body = (await res.json()) as { data: { image: { id: string } } };
       expect(body.data.image.id).toBe("img-1");
     });
+
+    it("uploads video successfully with mediaType video", async () => {
+      mockGetQueue.push({ id: "p1", userId: "user-1" });
+      mockReturningGetQueue.push({
+        id: "vid-1",
+        postId: "p1",
+        fileUrl: "posts/p1/abc.mp4",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File(["videodata"], "clip.mp4", { type: "video/mp4" }),
+      );
+      const res = await app.request(
+        "/posts/p1/images",
+        { method: "POST", body: formData },
+        env,
+      );
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        data: { image: { id: string } };
+      };
+      expect(body.data.image.id).toBe("vid-1");
+    });
+
+    it("returns 400 for video file too large (>50MB)", async () => {
+      mockGetQueue.push({ id: "p1", userId: "user-1" });
+
+      const { app, env } = await createApp(makeAuth());
+      const formData = new FormData();
+      const bigVideo = new Uint8Array(51 * 1024 * 1024);
+      formData.append(
+        "file",
+        new File([bigVideo], "huge.mp4", { type: "video/mp4" }),
+      );
+      const res = await app.request(
+        "/posts/p1/images",
+        { method: "POST", body: formData },
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as {
+        error: { code: string; message: string };
+      };
+      expect(body.error.code).toBe("FILE_TOO_LARGE");
+      expect(body.error.message).toContain("50MB");
+    });
+
+    it("falls back to jpg extension when filename has no extension", async () => {
+      mockGetQueue.push({ id: "p1", userId: "user-1" });
+      mockReturningGetQueue.push({
+        id: "img-2",
+        postId: "p1",
+        fileUrl: "posts/p1/abc.jpg",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File(["imagedata"], "photo.", { type: "image/jpeg" }),
+      );
+      const res = await app.request(
+        "/posts/p1/images",
+        { method: "POST", body: formData },
+        env,
+      );
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as {
+        data: { image: { id: string } };
+      };
+      expect(body.data.image.id).toBe("img-2");
+    });
   });
 
   describe("DELETE /posts/:id", () => {
@@ -812,6 +1672,389 @@ describe("routes/posts", () => {
       const r2 = (env as Record<string, { delete: ReturnType<typeof vi.fn> }>)
         .R2;
       expect(r2.delete).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("POST /posts/:id/ai-classify", () => {
+    it("returns 403 for non-admin users", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("FORBIDDEN");
+    });
+
+    it("returns 404 when target post does not exist", async () => {
+      mockGetQueue.push(null);
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN", "admin-1"));
+      const res = await app.request(
+        "/posts/missing/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("returns 503 when AI credentials are missing", async () => {
+      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce(null);
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN", "admin-1"));
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("AI_NOT_CONFIGURED");
+    });
+
+    it("returns 500 when AI classification fails", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce(null);
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+      mockAllQueue.push([]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("AI_FAILED");
+    });
+
+    it("classifies post and updates urgency for high-risk result", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedCategory: "HAZARD",
+        suggestedHazardType: null,
+        suggestedHazardSubcategory: null,
+        suggestedRiskLevel: "HIGH",
+        classificationReason: "high risk",
+        keyFindings: ["fall risk"],
+        confidence: 0.9,
+        modelVersion: "test-model",
+      });
+
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+      mockAllQueue.push([{ fileUrl: "/r2/posts/p1/image.jpg" }]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const r2 = env as Record<
+        string,
+        { get: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> }
+      >;
+      r2.R2.get.mockResolvedValueOnce({
+        arrayBuffer: vi.fn(async () => new ArrayBuffer(8)),
+        httpMetadata: { contentType: "image/jpeg" },
+      });
+
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { classification: { suggestedRiskLevel: string } };
+      };
+      expect(body.data.classification.suggestedRiskLevel).toBe("HIGH");
+      expect(r2.R2.get).toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    it("classifies LOW risk post without setting isUrgent", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedCategory: "HAZARD",
+        suggestedHazardType: null,
+        suggestedHazardSubcategory: null,
+        suggestedRiskLevel: "LOW",
+        classificationReason: "low risk",
+        keyFindings: [],
+        confidence: 0.5,
+        modelVersion: "test-model",
+      });
+
+      mockGetQueue.push({ id: "p1", content: "minor issue" });
+      mockAllQueue.push([]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { classification: { suggestedRiskLevel: string } };
+      };
+      expect(body.data.classification.suggestedRiskLevel).toBe("LOW");
+    });
+
+    it("skips image when fileUrl is empty", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedCategory: "HAZARD",
+        suggestedHazardType: null,
+        suggestedHazardSubcategory: null,
+        suggestedRiskLevel: "LOW",
+        classificationReason: "reason",
+        keyFindings: [],
+        confidence: 0.8,
+        modelVersion: "test-model",
+      });
+
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+      mockAllQueue.push([{ fileUrl: "" }]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      expect(r2.R2.get).not.toHaveBeenCalled();
+    });
+
+    it("skips image when R2 returns null", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedCategory: "HAZARD",
+        suggestedHazardType: null,
+        suggestedHazardSubcategory: null,
+        suggestedRiskLevel: "LOW",
+        classificationReason: "reason",
+        keyFindings: [],
+        confidence: 0.8,
+        modelVersion: "test-model",
+      });
+
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+      mockAllQueue.push([{ fileUrl: "/r2/posts/p1/image.jpg" }]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      r2.R2.get.mockResolvedValueOnce(null);
+
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("falls back to image/jpeg when contentType is missing", async () => {
+      const { classifyPost, getAiCredentials } =
+        await import("../../lib/gemini-ai");
+      vi.mocked(getAiCredentials).mockReturnValueOnce({
+        apiKey: "test-key",
+        textModel: "gemini-test",
+      });
+      vi.mocked(classifyPost).mockResolvedValueOnce({
+        suggestedCategory: "HAZARD",
+        suggestedHazardType: null,
+        suggestedHazardSubcategory: null,
+        suggestedRiskLevel: "LOW",
+        classificationReason: "reason",
+        keyFindings: [],
+        confidence: 0.8,
+        modelVersion: "test-model",
+      });
+
+      mockGetQueue.push({ id: "p1", content: "hazard content" });
+      mockAllQueue.push([{ fileUrl: "/r2/posts/p1/image.jpg" }]);
+
+      const { app, env } = await createApp(
+        makeAuth("SUPER_ADMIN", "super-admin-1"),
+      );
+      const r2 = env as Record<string, { get: ReturnType<typeof vi.fn> }>;
+      r2.R2.get.mockResolvedValueOnce({
+        arrayBuffer: vi.fn(async () => new ArrayBuffer(8)),
+        httpMetadata: {},
+      });
+
+      const res = await app.request(
+        "/posts/p1/ai-classify",
+        { method: "POST" },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      expect(r2.R2.get).toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /posts/:id/resubmit", () => {
+    it("returns 404 when post does not exist", async () => {
+      mockGetQueue.push(null);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts/p404/resubmit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplementaryContent: "update" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 403 for non-owner", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "someone-else",
+        reviewStatus: "REJECTED",
+      });
+
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
+      const res = await app.request(
+        "/posts/p1/resubmit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplementaryContent: "update" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 400 when status cannot be resubmitted", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "user-1",
+        reviewStatus: "PENDING",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts/p1/resubmit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplementaryContent: "update" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+    });
+
+    it("resubmits post and awards supplementary points", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "user-1",
+        siteId: "site-1",
+        reviewStatus: "REJECTED",
+      });
+      mockGetQueue.push({
+        id: "p1",
+        userId: "user-1",
+        siteId: "site-1",
+        reviewStatus: "PENDING",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts/p1/resubmit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplementaryContent: "fixed details" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockBatch).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 404 when post disappears after batch update", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "user-1",
+        siteId: "site-1",
+        reviewStatus: "REJECTED",
+      });
+      mockGetQueue.push(null);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/posts/p1/resubmit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplementaryContent: "updated info" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("POST_NOT_FOUND");
     });
   });
 });

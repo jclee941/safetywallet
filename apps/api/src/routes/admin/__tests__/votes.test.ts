@@ -13,7 +13,12 @@ vi.mock("../../../middleware/auth", () => ({
 }));
 
 vi.mock("@hono/zod-validator", () => ({
-  zValidator: (_target: string, _schema: unknown) => {
+  zValidator: (
+    _target: string,
+    schema: {
+      safeParse?: (data: unknown) => { success: boolean; data: unknown };
+    },
+  ) => {
     return async (
       c: {
         req: {
@@ -24,7 +29,27 @@ vi.mock("@hono/zod-validator", () => ({
       next: () => Promise<void>,
     ) => {
       const body = await c.req.json();
-      c.req.addValidatedData("json", body);
+      if (typeof schema.safeParse === "function") {
+        const parsed = schema.safeParse(body);
+        if (!parsed.success) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "Validation failed",
+              },
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        c.req.addValidatedData("json", parsed.data);
+      } else {
+        c.req.addValidatedData("json", body);
+      }
       await next();
     };
   },
@@ -250,13 +275,41 @@ describe("admin/votes", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userId: "u-1",
-            siteId: "site-1",
+            userId: "00000000-0000-0000-0000-000000000001",
+            siteId: "00000000-0000-0000-0000-000000000002",
             month: "2025-01",
           }),
         },
         env,
       );
+      expect(res.status).toBe(201);
+    });
+
+    it("continues when candidate audit insert fails", async () => {
+      mockGet
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "vc-new", userId: "u-1" });
+      mockDb.insert
+        .mockImplementationOnce(() => makeInsertChain())
+        .mockImplementationOnce(() => {
+          throw new Error("audit insert failed");
+        });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes/candidates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: "00000000-0000-0000-0000-000000000001",
+            siteId: "00000000-0000-0000-0000-000000000002",
+            month: "2025-01",
+          }),
+        },
+        env,
+      );
+
       expect(res.status).toBe(201);
     });
 
@@ -269,8 +322,8 @@ describe("admin/votes", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userId: "u-1",
-            siteId: "site-1",
+            userId: "00000000-0000-0000-0000-000000000001",
+            siteId: "00000000-0000-0000-0000-000000000002",
             month: "2025-01",
           }),
         },
@@ -290,6 +343,25 @@ describe("admin/votes", () => {
         },
         env,
       );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for invalid candidate schema payload", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes/candidates",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: "bad-user-id",
+            siteId: "bad-site-id",
+            month: "2025/01",
+          }),
+        },
+        env,
+      );
+
       expect(res.status).toBe(400);
     });
   });
@@ -422,9 +494,64 @@ describe("admin/votes", () => {
       );
       expect(res.status).toBe(404);
     });
+
+    it("returns 400 when id param is empty", async () => {
+      const { default: route } = await import("../votes");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = { DB: {} } as Record<string, unknown>;
+      const res = await app.request(
+        "/votes/candidates/vc-1",
+        { method: "DELETE" },
+        env,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("returns success when audit log insert fails on delete", async () => {
+      mockGet.mockResolvedValueOnce({
+        id: "vc-1",
+        userId: "u-1",
+        month: "2025-01",
+      });
+      mockRun.mockResolvedValue(undefined);
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes/candidates/vc-1",
+        { method: "DELETE" },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
   });
 
   describe("GET /votes/period/:siteId/:month", () => {
+    it("returns 400 when siteId and month are empty", async () => {
+      const { default: route } = await import("../votes");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/", route);
+      const env = { DB: {} } as Record<string, unknown>;
+      const res = await app.request("/votes/period/site-1/2025-01", {}, env);
+      expect(res.status).toBe(400);
+    });
+
     it("returns vote period", async () => {
       mockGet.mockResolvedValueOnce({
         id: "vp-1",
@@ -545,6 +672,39 @@ describe("admin/votes", () => {
       );
       expect(res.status).toBe(200);
       expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    it("continues when vote period audit insert fails", async () => {
+      mockGet
+        .mockResolvedValueOnce({
+          id: "vp-1",
+          siteId: "site-1",
+          month: "2025-01",
+        })
+        .mockResolvedValueOnce({
+          id: "vp-1",
+          siteId: "site-1",
+          month: "2025-01",
+        });
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes/period/site-1/2025-01",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startDate: "2025-01-01T00:00:00.000Z",
+            endDate: "2025-01-31T23:59:59.000Z",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
     });
 
     it("creates new vote period when missing", async () => {
@@ -688,6 +848,35 @@ describe("admin/votes", () => {
       );
       expect(res.status).toBe(200);
       expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    it("returns success when auto-nomination audit insert fails", async () => {
+      mockDb.select.mockImplementationOnce((_projection?: unknown) => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(() => Promise.resolve([{ id: "site-1" }])),
+          })),
+        })),
+      }));
+      mockDb.insert.mockImplementationOnce(() => {
+        throw new Error("audit insert failed");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/votes/auto-nomination-config",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            siteId: "site-1",
+            topN: 8,
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
     });
   });
 });

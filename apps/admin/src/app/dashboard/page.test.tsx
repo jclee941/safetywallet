@@ -109,4 +109,47 @@ describe("DashboardPage", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText("오늘의 출근 현황")).toBeInTheDocument();
   });
+
+  it("hides backlog warning when pending exists but hours are below threshold", () => {
+    mockUseDashboardStats.mockReturnValue(
+      toDashboardStatsResult({
+        ...createMockQueryResult({
+          todayPostsCount: 1,
+          pendingCount: 2,
+          urgentCount: 0,
+          avgProcessingHours: 47,
+          totalUsers: 10,
+          totalPosts: 10,
+          activeUsersToday: 2,
+          totalSites: 1,
+          categoryDistribution: {
+            HAZARD: 0,
+            UNSAFE_BEHAVIOR: 0,
+            INCONVENIENCE: 0,
+            SUGGESTION: 0,
+            BEST_PRACTICE: 0,
+          },
+        }),
+      }),
+    );
+
+    render(<DashboardPage />);
+    expect(
+      screen.queryByText("48시간 이상 미검토 건이 있습니다"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders fallback zero values when stats are missing", () => {
+    mockUseDashboardStats.mockReturnValue(
+      toDashboardStatsResult(createMockQueryResult(undefined, false, true)),
+    );
+
+    render(<DashboardPage />);
+
+    expect(screen.getByText("오늘의 출근 현황")).toBeInTheDocument();
+    expect(screen.getAllByText("0")).toHaveLength(3);
+    expect(
+      screen.queryByText("48시간 이상 미검토 건이 있습니다"),
+    ).not.toBeInTheDocument();
+  });
 });

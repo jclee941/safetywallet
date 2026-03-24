@@ -61,6 +61,31 @@ describe("requestLoggerMiddleware", () => {
     );
   });
 
+  it("passes executionCtx.waitUntil through logger options", async () => {
+    const app = makeApp();
+    app.get("/api/health", (c) => c.json({ ok: true }));
+
+    const env = makeEnv();
+    const waitUntil = vi.fn();
+    const executionCtx = { waitUntil };
+
+    const res = await app.request(
+      "http://localhost/api/health",
+      {},
+      env,
+      executionCtx as unknown as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+
+    const options = (
+      createLogger as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0]?.[1] as { waitUntil?: (p: Promise<unknown>) => void };
+
+    const marker = Promise.resolve("ok");
+    options.waitUntil?.(marker);
+    expect(waitUntil).toHaveBeenCalledWith(marker);
+  });
+
   it("sets log on context for route handlers", async () => {
     const app = makeApp();
     let hasLog = false;

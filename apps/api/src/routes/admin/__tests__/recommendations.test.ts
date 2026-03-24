@@ -12,6 +12,8 @@ vi.mock("../../../middleware/auth", () => ({
   ),
 }));
 
+vi.mock("../../../lib/auth.ts", () => ({}));
+
 vi.mock("@hono/zod-validator", () => ({
   zValidator: (_target: string, _schema: unknown) => {
     return async (
@@ -22,19 +24,46 @@ vi.mock("@hono/zod-validator", () => ({
           query: (k: string) => string | undefined;
           addValidatedData: (target: string, data: unknown) => void;
         };
+        json: (body: unknown, status?: number) => Response;
       },
       next: () => Promise<void>,
     ) => {
+      const parseWithSchema = (
+        input: unknown,
+      ): { success: boolean; data?: unknown } => {
+        const candidate = _schema as {
+          safeParse?: (value: unknown) => { success: boolean; data?: unknown };
+        };
+        if (candidate && typeof candidate.safeParse === "function") {
+          return candidate.safeParse(input);
+        }
+        return { success: true, data: input };
+      };
+
       if (_target === "query") {
         const url = new URL((c as unknown as { req: { url: string } }).req.url);
         const params: Record<string, string> = {};
         url.searchParams.forEach((v, k) => {
           params[k] = v;
         });
-        c.req.addValidatedData("query", params);
+        const parsed = parseWithSchema(params);
+        if (!parsed.success) {
+          return c.json(
+            { success: false, error: { code: "VALIDATION_ERROR" } },
+            400,
+          );
+        }
+        c.req.addValidatedData("query", parsed.data ?? params);
       } else {
         const body = await c.req.json();
-        c.req.addValidatedData("json", body);
+        const parsed = parseWithSchema(body);
+        if (!parsed.success) {
+          return c.json(
+            { success: false, error: { code: "VALIDATION_ERROR" } },
+            400,
+          );
+        }
+        c.req.addValidatedData("json", parsed.data ?? body);
       }
       await next();
     };
@@ -168,6 +197,72 @@ describe("admin/recommendations", () => {
       );
       expect(res.status).toBe(403);
     });
+
+    it("returns 400 for invalid pagination query", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations?page=0&limit=20",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for invalid sort query", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations?page=1&limit=20&sort=INVALID",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when DB list query fails", async () => {
+      mockDb.select.mockImplementationOnce(() => {
+        throw new Error("db failure");
+      });
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations?page=1&limit=20",
+        {},
+        env,
+      );
+      expect(res.status).toBe(500);
+    });
+
+    it("returns 200 and empty pagination when count row is missing", async () => {
+      thenableResults = [[{ id: "r-1", recommendedName: "Kim" }], []];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations?page=1&limit=20&sort=RECOMMENDED_NAME_ASC",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { pagination: { total: number; totalPages: number } };
+      };
+      expect(body.data.pagination.total).toBe(0);
+      expect(body.data.pagination.totalPages).toBe(0);
+    });
+
+    it("applies optional date filters for list endpoint", async () => {
+      thenableResults = [[], [{ count: 0 }]];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations?page=1&limit=20&startDate=2025-01-01&endDate=2025-01-31",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { pagination: { total: number } };
+      };
+      expect(body.data.pagination.total).toBe(0);
+    });
   });
 
   describe("GET /recommendations/stats", () => {
@@ -184,6 +279,43 @@ describe("admin/recommendations", () => {
         data: { totalRecommendations: number };
       };
       expect(body.data.totalRecommendations).toBe(5);
+    });
+
+    it("returns 200 with zero total when count row is missing", async () => {
+      thenableResults = [[], [], []];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/recommendations/stats", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { totalRecommendations: number };
+      };
+      expect(body.data.totalRecommendations).toBe(0);
+    });
+
+    it("returns 500 when stats query fails", async () => {
+      mockDb.select.mockImplementationOnce(() => {
+        throw new Error("stats query failure");
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/recommendations/stats", {}, env);
+      expect(res.status).toBe(500);
+    });
+
+    it("applies optional stats filters and returns success", async () => {
+      thenableResults = [[{ count: 2 }], [], []];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations/stats?siteId=s1&startDate=2025-01-01&endDate=2025-01-31",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { totalRecommendations: number };
+      };
+      expect(body.data.totalRecommendations).toBe(2);
     });
   });
 
@@ -204,6 +336,52 @@ describe("admin/recommendations", () => {
       ];
       const { app, env } = await createApp(makeAuth());
       const res = await app.request("/recommendations/export", {}, env);
+      expect(res.status).toBe(200);
+      const contentType = res.headers.get("Content-Type") || "";
+      expect(contentType).toContain("text/csv");
+    });
+
+    it("fills optional fields as empty strings in CSV", async () => {
+      thenableResults = [
+        [
+          {
+            recommendationDate: "2025-01-01",
+            recommenderName: null,
+            recommenderCompany: null,
+            recommendedName: "Kim",
+            tradeType: "철근",
+            reason: "안전 우수",
+            siteName: null,
+          },
+        ],
+      ];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/recommendations/export", {}, env);
+
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("2025-01-01,,,");
+    });
+
+    it("returns header-only CSV when export rows are empty", async () => {
+      thenableResults = [[]];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/recommendations/export", {}, env);
+
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("추천일,추천자,소속,피추천자,공종,추천 사유,현장");
+    });
+
+    it("applies optional export filters and returns CSV", async () => {
+      thenableResults = [[]];
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/recommendations/export?siteId=s1&startDate=2025-01-01&endDate=2025-01-31",
+        {},
+        env,
+      );
+
       expect(res.status).toBe(200);
       const contentType = res.headers.get("Content-Type") || "";
       expect(contentType).toContain("text/csv");

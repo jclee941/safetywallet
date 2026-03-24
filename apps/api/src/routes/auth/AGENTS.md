@@ -8,6 +8,7 @@
 ## INVENTORY
 
 - Route files (7): `index.ts`, `lockout.ts`, `login-admin.ts`, `login-worker.ts`, `login.ts`, `register.ts`, `session.ts`.
+- Test directory: `__tests__/` (4): `lockout.test.ts`, `login-admin.test.ts`, `login-route.test.ts`, `login-worker.test.ts`.
 - Local doc: `AGENTS.md`.
 
 ## CONVENTIONS

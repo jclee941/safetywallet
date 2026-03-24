@@ -54,6 +54,14 @@ function createWrapper() {
 }
 
 describe("use-api hooks", () => {
+  it("re-exports hook modules from barrel", async () => {
+    const api = await import("../use-api");
+    expect(typeof api.usePosts).toBe("function");
+    expect(typeof api.useSystemStatus).toBe("function");
+    expect(typeof api.useEducationContents).toBe("function");
+    expect(typeof api.useMyActions).toBe("function");
+  });
+
   it("usePosts fetches post list for site", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 });
     const { wrapper } = createWrapper();

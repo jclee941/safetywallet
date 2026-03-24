@@ -4,7 +4,7 @@ import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
-import { pointPolicies, siteMemberships, auditLogs } from "../db/schema";
+import { pointPolicies, siteMemberships } from "../db/schema";
 import { success, error } from "../lib/response";
 import { authMiddleware } from "../middleware/auth";
 import { rateLimitMiddleware } from "../middleware/rate-limit";

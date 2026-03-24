@@ -47,6 +47,14 @@ describe("use-api barrel exports", () => {
     expect(typeof barrel.useDeletePolicy).toBe("function");
   });
 
+  it("re-exports education hooks from use-education-api", () => {
+    expect(typeof barrel.useEducationContents).toBe("function");
+    expect(typeof barrel.useQuizzes).toBe("function");
+    expect(typeof barrel.useStatutoryTrainings).toBe("function");
+    expect(typeof barrel.useTbmRecords).toBe("function");
+    expect(typeof barrel.useEducationCompletions).toBe("function");
+  });
+
   it("re-exports sites hooks from use-sites-api", () => {
     expect(typeof barrel.useSite).toBe("function");
     expect(typeof barrel.useUpdateSite).toBe("function");
@@ -63,5 +71,12 @@ describe("use-api barrel exports", () => {
     expect(typeof barrel.useAllTimeRankings).toBe("function");
     expect(typeof barrel.usePointsHistory).toBe("function");
     expect(typeof barrel.useRevokePoints).toBe("function");
+  });
+
+  it("re-exports fas sync and sync error hooks", () => {
+    expect(typeof barrel.useFasSyncStatus).toBe("function");
+    expect(typeof barrel.useHyperdriveSync).toBe("function");
+    expect(typeof barrel.useSyncErrors).toBe("function");
+    expect(typeof barrel.useUpdateSyncErrorStatus).toBe("function");
   });
 });

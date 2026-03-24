@@ -121,6 +121,30 @@ describe("image-privacy", () => {
       removeSpy.mockRestore();
     });
 
+    it("returns original when EXIF object only has empty thumbnail data", async () => {
+      const minJpeg = new Uint8Array([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+      ]).buffer;
+
+      const loadSpy = vi.spyOn(piexif, "load").mockReturnValue({
+        "0th": {},
+        Exif: {},
+        GPS: {},
+        "1st": {},
+        thumbnail: "thumb",
+      } as unknown as ReturnType<typeof piexif.load>);
+      const removeSpy = vi.spyOn(piexif, "remove");
+
+      const result = await stripExifMetadata(minJpeg);
+
+      expect(result).toBe(minJpeg);
+      expect(removeSpy).not.toHaveBeenCalled();
+
+      loadSpy.mockRestore();
+      removeSpy.mockRestore();
+    });
+
     it("processImageForPrivacy strips EXIF from JPEG with EXIF data", async () => {
       const minJpeg = new Uint8Array([
         0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
@@ -182,6 +206,44 @@ describe("image-privacy", () => {
       expect(result.metadata["exif-stripped"]).toBe("true");
       expect(result.metadata["original-filename"]).toBe("photo.jpg");
       expect(result.metadata["processed-at"]).toBeDefined();
+    });
+  });
+
+  describe("stripExifMetadata edge cases", () => {
+    it("returns original when EXIF only has thumbnail data", async () => {
+      const minJpeg = new Uint8Array([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+      ]).buffer;
+
+      const loadSpy = vi.spyOn(piexif, "load").mockReturnValue({
+        "0th": {},
+        Exif: {},
+        GPS: {},
+        "1st": {},
+        thumbnail: "some-thumbnail-data",
+      } as unknown as ReturnType<typeof piexif.load>);
+
+      const result = await stripExifMetadata(minJpeg);
+      expect(result).toBe(minJpeg);
+
+      loadSpy.mockRestore();
+    });
+
+    it("returns original when piexif.load throws a non-Error value", async () => {
+      const minJpeg = new Uint8Array([
+        0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+      ]).buffer;
+
+      const loadSpy = vi.spyOn(piexif, "load").mockImplementation(() => {
+        throw "string-error";
+      });
+
+      const result = await stripExifMetadata(minJpeg);
+      expect(result).toBe(minJpeg);
+
+      loadSpy.mockRestore();
     });
   });
 });

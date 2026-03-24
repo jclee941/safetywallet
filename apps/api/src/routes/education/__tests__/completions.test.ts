@@ -7,6 +7,17 @@ type AppEnv = {
   Variables: { auth: AuthContext };
 };
 
+const mockLoggerWarn = vi.fn();
+
+vi.mock("../../../lib/logger", () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: (...a: unknown[]) => mockLoggerWarn(...a),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
+
 vi.mock("../../../middleware/auth", () => ({
   authMiddleware: vi.fn(async (_c: unknown, next: () => Promise<void>) =>
     next(),
@@ -157,5 +168,177 @@ describe("education/completions route", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { completion: unknown } };
     expect(body.data.completion).toBeTruthy();
+  });
+
+  it("returns 403 when worker is not a site member", async () => {
+    selectResults = [{ id: "c-1", siteId: "site-1" }, undefined];
+
+    const { app, env } = await createApp(makeAuth({ role: "WORKER" }));
+    const res = await app.request(
+      "/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contentId: "c-1",
+          signature: "data:image/png;base64,signature",
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("updates an existing completion record", async () => {
+    selectResults = [
+      { id: "c-1", siteId: "site-1" },
+      { id: "membership-1" },
+      { id: "comp-1", contentId: "c-1", userId: "user-1" },
+    ];
+    updateResult = {
+      id: "comp-1",
+      contentId: "c-1",
+      userId: "user-1",
+      signatureData: "data:image/png;base64,updated",
+    };
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request(
+      "/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contentId: "c-1",
+          signature: "data:image/png;base64,updated",
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { completion: { id: string } } };
+    expect(body.data.completion.id).toBe("comp-1");
+  });
+
+  it("returns completion details for GET /:contentId/me", async () => {
+    selectResults = [
+      { id: "c-1", siteId: "site-1" },
+      { id: "membership-1" },
+      {
+        id: "comp-1",
+        signedAt: "2026-03-01T00:00:00.000Z",
+        signatureData: "data:image/png;base64,sig",
+      },
+    ];
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request("/completions/c-1/me", {}, env);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { completion: { id: string; signatureData: string } };
+    };
+    expect(body.data.completion.id).toBe("comp-1");
+  });
+
+  it("returns null completion for GET /:contentId/me when none exists", async () => {
+    selectResults = [
+      { id: "c-1", siteId: "site-1" },
+      { id: "membership-1" },
+      undefined,
+    ];
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request("/completions/c-1/me", {}, env);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { completion: unknown } };
+    expect(body.data.completion).toBeNull();
+  });
+
+  it("returns 404 for GET /:contentId/me when content does not exist", async () => {
+    selectResults = [undefined];
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request("/completions/missing/me", {}, env);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 for GET /:contentId/me when worker is not a member", async () => {
+    selectResults = [{ id: "c-1", siteId: "site-1" }, undefined];
+
+    const { app, env } = await createApp(makeAuth({ role: "WORKER" }));
+    const res = await app.request("/completions/c-1/me", {}, env);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("auto-awards EDUCATION_COMPLETION points when policy exists", async () => {
+    selectResults = [
+      { id: "c-1", siteId: "site-1" },
+      { id: "membership-1" },
+      undefined,
+      { defaultAmount: 10, name: "Education Points" },
+    ];
+    insertResult = { id: "comp-1", signatureData: "data:image/png" };
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request(
+      "/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contentId: "c-1",
+          signature: "data:image/png;base64,sig",
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockDb.insert).toHaveBeenCalledTimes(2);
+  });
+
+  it("catches and warns when auto-award points insert fails", async () => {
+    selectResults = [
+      { id: "c-1", siteId: "site-1" },
+      { id: "membership-1" },
+      undefined,
+      { defaultAmount: 10, name: "Education Points" },
+    ];
+    insertResult = { id: "comp-1", signatureData: "data:image/png" };
+    mockDb.insert
+      .mockImplementationOnce(() => makeInsertChain())
+      .mockImplementationOnce(() => ({
+        values: vi.fn(() => {
+          throw new Error("points insert failed");
+        }),
+      }));
+
+    const { app, env } = await createApp(makeAuth());
+    const res = await app.request(
+      "/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contentId: "c-1",
+          signature: "data:image/png;base64,sig",
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      "Failed to auto-award EDUCATION_COMPLETION points",
+      expect.objectContaining({
+        error: { name: "Error", message: "points insert failed" },
+      }),
+    );
   });
 });

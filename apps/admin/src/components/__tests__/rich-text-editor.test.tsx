@@ -13,10 +13,14 @@ const createMockEditor = (options?: {
   html?: string;
   canUndo?: boolean;
   canRedo?: boolean;
+  activeKeys?: string[];
+  activeHeadingLevels?: number[];
 }) => {
   let html = options?.html ?? "<p>old</p>";
   const canUndo = options?.canUndo ?? true;
   const canRedo = options?.canRedo ?? false;
+  const activeKeys = options?.activeKeys ?? [];
+  const activeHeadingLevels = options?.activeHeadingLevels ?? [];
 
   const chainApi = {
     focus: () => chainApi,
@@ -87,7 +91,12 @@ const createMockEditor = (options?: {
         }),
       }),
     }),
-    isActive: () => false,
+    isActive: (key: string, attrs?: { level?: number }) => {
+      if (key === "heading" && attrs?.level) {
+        return activeHeadingLevels.includes(attrs.level);
+      }
+      return activeKeys.includes(key);
+    },
     getHTML: () => html,
     commands: {
       setContent: (next: string) => {
@@ -167,6 +176,35 @@ describe("RichTextEditor", () => {
     );
   });
 
+  it("uses default placeholder when placeholder prop is omitted", () => {
+    useEditorMock.mockReturnValue(createMockEditor({ html: "<p>default</p>" }));
+
+    render(<RichTextEditor content="<p>default</p>" onChange={vi.fn()} />);
+
+    expect(placeholderConfigureMock).toHaveBeenCalledWith({
+      placeholder: "내용을 입력하세요...",
+    });
+  });
+
+  it("calls onChange from editor onUpdate callback", () => {
+    const onChange = vi.fn();
+    useEditorMock.mockReturnValue(createMockEditor({ html: "<p>old</p>" }));
+
+    render(<RichTextEditor content="<p>old</p>" onChange={onChange} />);
+
+    const editorOptions = useEditorMock.mock.calls[0][0] as {
+      onUpdate: (args: { editor: { getHTML: () => string } }) => void;
+    };
+
+    editorOptions.onUpdate({
+      editor: {
+        getHTML: () => "<p>updated</p>",
+      },
+    });
+
+    expect(onChange).toHaveBeenCalledWith("<p>updated</p>");
+  });
+
   it("syncs external content updates through setContent", () => {
     const editor = createMockEditor({ html: "<p>old</p>" });
     useEditorMock.mockReturnValue(editor);
@@ -176,21 +214,69 @@ describe("RichTextEditor", () => {
     expect(setContentMock).toHaveBeenCalledWith("<p>new</p>");
   });
 
-  it("runs formatting commands from toolbar buttons", () => {
+  it("does not call setContent when external content matches editor html", () => {
+    useEditorMock.mockReturnValue(createMockEditor({ html: "<p>same</p>" }));
+
+    render(<RichTextEditor content="<p>same</p>" onChange={vi.fn()} />);
+
+    expect(setContentMock).not.toHaveBeenCalled();
+  });
+
+  it("runs all toolbar commands and reflects active/disabled states", () => {
     useEditorMock.mockReturnValue(
-      createMockEditor({ canUndo: true, canRedo: false }),
+      createMockEditor({
+        canUndo: true,
+        canRedo: false,
+        activeKeys: ["bold", "italic", "strike", "bulletList", "blockquote"],
+        activeHeadingLevels: [2],
+      }),
     );
 
     render(<RichTextEditor content="<p>x</p>" onChange={vi.fn()} />);
 
     const buttons = screen.getAllByRole("button");
-    fireEvent.click(buttons[0]);
-    fireEvent.click(buttons[1]);
-    fireEvent.click(buttons[2]);
+    buttons.forEach((button) => {
+      if (!button.hasAttribute("disabled")) {
+        fireEvent.click(button);
+      }
+    });
 
     expect(runCalls).toEqual(
-      expect.arrayContaining(["toggleBold", "toggleItalic", "toggleStrike"]),
+      expect.arrayContaining([
+        "toggleBold",
+        "toggleItalic",
+        "toggleStrike",
+        "toggleHeading",
+        "toggleBulletList",
+        "toggleOrderedList",
+        "toggleBlockquote",
+        "setHorizontalRule",
+        "undo",
+      ]),
     );
+    expect(buttons[0].className).toContain("bg-muted");
+    expect(buttons[1].className).toContain("bg-muted");
+    expect(buttons[4].className).toContain("bg-muted");
+    expect(buttons[9]).not.toBeDisabled();
     expect(buttons[10]).toBeDisabled();
+    expect(buttons[10].className).toContain("opacity-50");
+    expect(runCalls).not.toContain("redo");
+  });
+
+  it("enables redo button when editor can redo", () => {
+    useEditorMock.mockReturnValue(
+      createMockEditor({
+        canUndo: true,
+        canRedo: true,
+      }),
+    );
+
+    render(<RichTextEditor content="<p>x</p>" onChange={vi.fn()} />);
+
+    const buttons = screen.getAllByRole("button");
+    fireEvent.click(buttons[10]);
+
+    expect(buttons[10]).not.toBeDisabled();
+    expect(runCalls).toContain("redo");
   });
 });

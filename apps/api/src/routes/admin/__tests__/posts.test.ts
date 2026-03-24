@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import { reviewPostHandler } from "../posts/review-handlers";
+import {
+  deletePostHandler,
+  emergencyPurgePostHandler,
+  emergencyPurgeActionHandler,
+} from "../posts/delete-handlers";
 
 interface AuthContext {
   user: {
@@ -295,7 +301,98 @@ describe("routes/admin/posts", () => {
     });
   });
 
+  describe("GET /admin/posts/:id", () => {
+    it("returns detailed post with images and reviews", async () => {
+      mockGetQueue.push(
+        {
+          id: "p1",
+          userId: "u1",
+          siteId: "s1",
+          category: "HAZARD",
+        },
+        null,
+        { id: "s1", name: "Severance" },
+      );
+      mockAllQueue.push(
+        [{ id: "img1", postId: "p1" }],
+        [{ id: "rev1", postId: "p1", action: "APPROVE" }],
+      );
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/admin/posts/p1", {}, env);
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          post: {
+            id: string;
+            author: { id: string; nameMasked: string } | null;
+            images: unknown[];
+            reviews: unknown[];
+          };
+        };
+      };
+      expect(body.data.post.id).toBe("p1");
+      expect(body.data.post.author).toBeNull();
+      expect(body.data.post.images).toHaveLength(1);
+      expect(body.data.post.reviews).toHaveLength(1);
+    });
+
+    it("returns 404 when post detail target does not exist", async () => {
+      mockGetQueue.push(undefined);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/admin/posts/missing", {}, env);
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 400 when postId param is empty", async () => {
+      const { default: adminPostsRoute } = await import("../posts");
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        c.req.param = ((key?: string) =>
+          key ? "" : {}) as unknown as typeof c.req.param;
+        await next();
+      });
+      app.route("/admin", adminPostsRoute);
+      const env = {
+        DB: {},
+        R2: { delete: vi.fn() },
+      } as Record<string, unknown>;
+      const res = await app.request("/admin/posts/p1", {}, env);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+  });
+
   describe("POST /admin/posts/:id/review", () => {
+    it("returns 400 when review handler receives empty post id", async () => {
+      const json = vi.fn(
+        (body: unknown, status?: number) =>
+          new Response(JSON.stringify(body), {
+            status: status ?? 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      const response = await reviewPostHandler({
+        env: { DB: {} },
+        get: () => ({ user: { id: "admin-1" } }),
+        req: {
+          param: () => "",
+          valid: () => ({ action: "APPROVE" }),
+        },
+        json,
+      } as unknown as Parameters<typeof reviewPostHandler>[0]);
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+
     it("approves a post successfully", async () => {
       // db.select().from(posts).where().get() → found post
       mockGetQueue.push({
@@ -459,6 +556,46 @@ describe("routes/admin/posts", () => {
       expect(res.status).toBe(500);
     });
 
+    it("keeps success response when audit log insert fails", async () => {
+      let insertCall = 0;
+      mockDb.insert.mockImplementation(() => {
+        insertCall += 1;
+        if (insertCall === 2) {
+          return {
+            values: vi.fn(() => {
+              throw new Error("audit log insert failed");
+            }),
+          };
+        }
+        return makeInsertChain();
+      });
+
+      mockGetQueue.push({
+        id: "p1",
+        userId: "u1",
+        siteId: "s1",
+        isPotentialDuplicate: false,
+      });
+      mockReturningGetQueue.push({
+        id: "r1",
+        postId: "p1",
+        action: "REJECT",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/posts/p1/review",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "REJECT" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
     it("handles false report rejection with user penalty", async () => {
       mockGetQueue.push({
         id: "p1",
@@ -492,6 +629,107 @@ describe("routes/admin/posts", () => {
       expect(mockUpdateSet).toHaveBeenCalled();
     });
 
+    it("skips penalty when user record not found for false report rejection", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "u1",
+        siteId: "s1",
+        isPotentialDuplicate: false,
+      });
+      mockReturningGetQueue.push({
+        id: "r1",
+        postId: "p1",
+        action: "REJECT",
+      });
+      mockGetQueue.push(undefined);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/posts/p1/review",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "REJECT", reasonCode: "FALSE" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateSet).not.toHaveBeenCalled();
+    });
+
+    it("treats null falseReportCount as 0 for false report rejection", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "u1",
+        siteId: "s1",
+        isPotentialDuplicate: false,
+      });
+      mockReturningGetQueue.push({
+        id: "r1",
+        postId: "p1",
+        action: "REJECT",
+      });
+      mockGetQueue.push({
+        falseReportCount: null,
+        restrictedUntil: null,
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/posts/p1/review",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "REJECT", reasonCode: "FALSE" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({ falseReportCount: 1 }),
+      );
+    });
+
+    it("does not reset restrictedUntil when it is already set to the future", async () => {
+      const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      mockGetQueue.push({
+        id: "p1",
+        userId: "u1",
+        siteId: "s1",
+        isPotentialDuplicate: false,
+      });
+      mockReturningGetQueue.push({
+        id: "r1",
+        postId: "p1",
+        action: "REJECT",
+      });
+      mockGetQueue.push({
+        falseReportCount: 3,
+        restrictedUntil: futureDate,
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/posts/p1/review",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "REJECT", reasonCode: "FALSE" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          falseReportCount: 4,
+          restrictedUntil: futureDate,
+        }),
+      );
+    });
+
     it("sets 0 points for potential duplicate posts", async () => {
       mockGetQueue.push({
         id: "p1",
@@ -517,6 +755,37 @@ describe("routes/admin/posts", () => {
       );
 
       expect(res.status).toBe(200);
+    });
+
+    it("rolls back review when points awarding hits daily limit", async () => {
+      mockGetQueue.push({
+        id: "p1",
+        userId: "u1",
+        siteId: "s1",
+        isPotentialDuplicate: false,
+      });
+      mockReturningGetQueue.push({
+        id: "r1",
+        postId: "p1",
+        action: "APPROVE",
+      });
+      mockReturningGetQueue.push(undefined);
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/posts/p1/review",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "APPROVE", pointsToAward: 10 }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("DAILY_LIMIT_EXCEEDED");
+      expect(mockDeleteWhere).toHaveBeenCalled();
     });
   });
 
@@ -574,6 +843,63 @@ describe("routes/admin/posts", () => {
 
       expect(res.status).toBe(404);
     });
+
+    it("returns 400 when required fields are missing", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/manual-approval",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: "u1", siteId: "s1" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("MISSING_REQUIRED_FIELDS");
+    });
+
+    it("keeps success response when manual approval audit log insert fails", async () => {
+      let insertCall = 0;
+      mockDb.insert.mockImplementation(() => {
+        insertCall += 1;
+        if (insertCall === 2) {
+          return {
+            values: vi.fn(() => {
+              throw new Error("audit log insert failed");
+            }),
+          };
+        }
+        return makeInsertChain();
+      });
+
+      mockGetQueue.push({ id: "u1", name: "Kim" });
+      mockReturningGetQueue.push({
+        id: "ma1",
+        userId: "u1",
+        siteId: "s1",
+        status: "APPROVED",
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/admin/manual-approval",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: "u1",
+            siteId: "s1",
+            reason: "Manual override needed",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(201);
+    });
   });
 
   describe("DELETE /admin/posts/:id", () => {
@@ -617,6 +943,103 @@ describe("routes/admin/posts", () => {
       );
 
       expect(res.status).toBe(404);
+    });
+
+    it("continues when R2.delete throws for images", async () => {
+      mockGetQueue.push({ id: "p1" });
+      mockAllQueue.push([{ fileUrl: "img1.jpg" }, { fileUrl: "img2.jpg" }]);
+      mockAllQueue.push([{ id: "r1" }]);
+      mockAllQueue.push([{ id: "pt1" }]);
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        new Error("R2 error"),
+      );
+      const res = await app.request(
+        "/admin/posts/p1",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Admin cleanup" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("logs String(e) when R2.delete throws a non-Error value", async () => {
+      mockGetQueue.push({ id: "p1" });
+      mockAllQueue.push([{ fileUrl: "img1.jpg" }]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        "R2 string failure",
+      );
+      const res = await app.request(
+        "/admin/posts/p1",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Admin cleanup" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 500 when dbBatchChunked throws during delete", async () => {
+      mockGetQueue.push({ id: "p1" });
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      const helpers = await import("../../../db/helpers");
+      vi.mocked(helpers.dbBatchChunked).mockRejectedValueOnce(
+        new Error("batch fail"),
+      );
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/admin/posts/p1",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Admin cleanup" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(500);
+    });
+
+    it("continues when audit log insert throws during delete", async () => {
+      mockGetQueue.push({ id: "p1" });
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      mockDb.insert.mockImplementationOnce(() => ({
+        values: vi.fn(() => {
+          throw new Error("audit log failed");
+        }),
+      }));
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/admin/posts/p1",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Admin cleanup" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
     });
   });
 
@@ -713,6 +1136,115 @@ describe("routes/admin/posts", () => {
 
       expect(res.status).toBe(404);
     });
+
+    it("continues when R2.delete throws during emergency purge", async () => {
+      mockGetQueue.push({ id: "p1", userId: "u1" });
+      mockAllQueue.push([{ fileUrl: "img1.jpg" }]);
+      mockAllQueue.push([{ id: "r1" }]);
+      mockAllQueue.push([{ id: "pt1" }]);
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        new Error("R2 error"),
+      );
+      const res = await app.request(
+        "/admin/posts/p1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Emergency purge",
+            confirmPostId: "p1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("logs String(e) when R2.delete throws a non-Error value during emergency purge", async () => {
+      mockGetQueue.push({ id: "p1", userId: "u1" });
+      mockAllQueue.push([{ fileUrl: "img1.jpg" }]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        "R2 string failure",
+      );
+      const res = await app.request(
+        "/admin/posts/p1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Emergency purge",
+            confirmPostId: "p1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 500 when dbBatchChunked throws during emergency purge", async () => {
+      mockGetQueue.push({ id: "p1", userId: "u1" });
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      const helpers = await import("../../../db/helpers");
+      vi.mocked(helpers.dbBatchChunked).mockRejectedValueOnce(
+        new Error("batch fail"),
+      );
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        "/admin/posts/p1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Emergency purge",
+            confirmPostId: "p1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(500);
+    });
+
+    it("continues when audit log insert throws during emergency purge", async () => {
+      mockGetQueue.push({ id: "p1", userId: "u1" });
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+      mockAllQueue.push([]);
+
+      mockDb.insert.mockImplementationOnce(() => ({
+        values: vi.fn(() => {
+          throw new Error("audit log failed");
+        }),
+      }));
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        "/admin/posts/p1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Emergency purge",
+            confirmPostId: "p1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
   });
 
   describe("DELETE /admin/actions/:id/emergency-purge", () => {
@@ -799,6 +1331,125 @@ describe("routes/admin/posts", () => {
       );
 
       expect(res.status).toBe(404);
+    });
+
+    it("continues when R2.delete throws during action purge", async () => {
+      mockGetQueue.push({ id: "a1", postId: "p1" });
+      mockAllQueue.push([{ fileUrl: "action-img1.jpg" }]);
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        new Error("R2 error"),
+      );
+      const res = await app.request(
+        "/admin/actions/a1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Compliance requirement",
+            confirmActionId: "a1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("logs String(e) when R2.delete throws a non-Error value during action purge", async () => {
+      mockGetQueue.push({ id: "a1", postId: "p1" });
+      mockAllQueue.push([{ fileUrl: "action-img1.jpg" }]);
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      (env.R2 as { delete: ReturnType<typeof vi.fn> }).delete.mockRejectedValue(
+        "R2 string failure",
+      );
+      const res = await app.request(
+        "/admin/actions/a1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Compliance requirement",
+            confirmActionId: "a1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+
+    it("continues when audit log insert throws during action purge", async () => {
+      mockGetQueue.push({ id: "a1", postId: "p1" });
+      mockAllQueue.push([]);
+
+      mockDb.insert.mockImplementationOnce(() => ({
+        values: vi.fn(() => {
+          throw new Error("audit log failed");
+        }),
+      }));
+
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request(
+        "/admin/actions/a1/emergency-purge",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Compliance requirement",
+            confirmActionId: "a1",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("direct handler tests (missing route params)", () => {
+    it("deletePostHandler returns 400 when postId is missing", async () => {
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth());
+        await next();
+      });
+      app.delete("/no-id", deletePostHandler as never);
+      const env = { DB: {}, R2: { delete: vi.fn() } };
+      const res = await app.request("/no-id", { method: "DELETE" }, env);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("emergencyPurgePostHandler returns 400 when postId is missing", async () => {
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth("SUPER_ADMIN"));
+        await next();
+      });
+      app.delete("/no-id", emergencyPurgePostHandler as never);
+      const env = { DB: {}, R2: { delete: vi.fn() } };
+      const res = await app.request("/no-id", { method: "DELETE" }, env);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("emergencyPurgeActionHandler returns 400 when actionId is missing", async () => {
+      const app = new Hono<AppEnv>();
+      app.use("*", async (c, next) => {
+        c.set("auth", makeAuth("SUPER_ADMIN"));
+        await next();
+      });
+      app.delete("/no-id", emergencyPurgeActionHandler as never);
+      const env = { DB: {}, R2: { delete: vi.fn() } };
+      const res = await app.request("/no-id", { method: "DELETE" }, env);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BAD_REQUEST");
     });
   });
 });

@@ -60,6 +60,10 @@ describe("use-recommendations", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual({ totalRecommendations: 5 });
+    const url = mockApiFetch.mock.calls[0][0] as string;
+    expect(url).toContain("siteId=site-1");
+    expect(url).toContain("startDate=2026-02-01");
+    expect(url).toContain("endDate=2026-02-28");
   });
 
   it("exports recommendations as blob download", async () => {
@@ -143,6 +147,34 @@ describe("use-recommendations", () => {
     expect(url).toContain("limit=15");
   });
 
+  it("omits siteId and sort when site is missing and sort is empty", async () => {
+    currentSiteId = null;
+    mockApiFetch.mockResolvedValue({
+      items: [],
+      pagination: { page: 1 },
+    });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useRecommendations(
+          1,
+          10,
+          undefined,
+          undefined,
+          "" as "CREATED_DESC" | "RECOMMENDED_NAME_ASC",
+        ),
+      { wrapper },
+    );
+
+    await result.current.refetch();
+    const url = mockApiFetch.mock.calls[0][0] as string;
+    expect(url).toContain("page=1");
+    expect(url).toContain("limit=10");
+    expect(url).not.toContain("siteId");
+    expect(url).not.toContain("sort=");
+  });
+
   it("fetches recommendation stats without dates", async () => {
     mockApiFetch.mockResolvedValue({ totalRecommendations: 0 });
     const { wrapper } = createWrapper();
@@ -151,6 +183,17 @@ describe("use-recommendations", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const url = mockApiFetch.mock.calls[0][0] as string;
     expect(url).not.toContain("startDate");
+  });
+
+  it("fetches recommendation stats without site and date params", async () => {
+    currentSiteId = null;
+    mockApiFetch.mockResolvedValue({ totalRecommendations: 0 });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useRecommendationStats(), { wrapper });
+
+    await result.current.refetch();
+    const url = mockApiFetch.mock.calls[0][0] as string;
+    expect(url).toBe("/admin/recommendations/stats?");
   });
 
   it("exports recommendations without optional params", async () => {
@@ -183,6 +226,43 @@ describe("use-recommendations", () => {
     const fetchUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
     expect(fetchUrl).not.toContain("siteId");
+    expect(clickSpy).toHaveBeenCalled();
+
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("exports recommendations with date range params", async () => {
+    const mockBlob = new Blob(["csv-with-date"], { type: "text/csv" });
+    const mockResponse = {
+      ok: true,
+      blob: vi.fn().mockResolvedValue(mockBlob),
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse));
+    vi.stubGlobal("URL", {
+      ...globalThis.URL,
+      createObjectURL: vi.fn().mockReturnValue("blob:dated"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const clickSpy = vi.fn();
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = _origCreateElement(tag);
+      if (tag === "a") el.click = clickSpy;
+      return el;
+    });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useExportRecommendations(), {
+      wrapper,
+    });
+    await result.current("2026-02-01", "2026-02-28");
+
+    const fetchUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(fetchUrl).toContain("siteId=site-1");
+    expect(fetchUrl).toContain("startDate=2026-02-01");
+    expect(fetchUrl).toContain("endDate=2026-02-28");
     expect(clickSpy).toHaveBeenCalled();
 
     vi.restoreAllMocks();

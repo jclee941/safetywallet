@@ -79,6 +79,48 @@ describe("audit", () => {
         userAgent: "TestBot/1.0",
       });
     });
+
+    it("swallows insert errors", async () => {
+      const db = {
+        insert: vi.fn(() => ({
+          values: vi.fn().mockRejectedValue(new Error("db insert failed")),
+        })),
+      };
+
+      await expect(
+        logAudit(
+          db as never,
+          "LOGIN_FAILED",
+          "actor-err",
+          "USER",
+          "target-err",
+          { reason: "failure" },
+          "0.0.0.0",
+          "Agent",
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it("swallows non-Error thrown values", async () => {
+      const db = {
+        insert: vi.fn(() => ({
+          values: vi.fn().mockRejectedValue("db insert failed"),
+        })),
+      };
+
+      await expect(
+        logAudit(
+          db as never,
+          "LOGIN_FAILED",
+          "actor-err-2",
+          "USER",
+          "target-err-2",
+          { reason: "failure" },
+          "0.0.0.0",
+          "Agent",
+        ),
+      ).resolves.toBeUndefined();
+    });
   });
 
   describe("logAuditWithContext", () => {

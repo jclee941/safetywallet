@@ -129,4 +129,41 @@ describe("app/home/page", () => {
       screen.getByRole("link", { name: /home\.safetyWallet/ }),
     ).toHaveAttribute("href", "/points");
   });
+
+  it("uses fallback display name and zero points when data is missing", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: true,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+    vi.mocked(usePoints).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    } as never);
+
+    render(<HomePage />);
+
+    expect(screen.getByText(/home\.greetingName/)).toBeInTheDocument();
+    expect(screen.getByText(/home\.myPointsCount/)).toBeInTheDocument();
+  });
+
+  it("uses empty site id for points query when auth is not ready", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      currentSiteId: "site-1",
+      isAuthenticated: false,
+      _hasHydrated: true,
+      user: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      setCurrentSite: vi.fn(),
+    });
+
+    render(<HomePage />);
+
+    expect(usePoints).toHaveBeenCalledWith("");
+  });
 });

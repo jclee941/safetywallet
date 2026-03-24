@@ -24,6 +24,16 @@ describe("i18n loader", () => {
     await expect(getLocale("en")).resolves.toEqual(en);
   });
 
+  it("loads vi and zh locales", async () => {
+    vi.resetModules();
+    const { getLocale } = await import("@/i18n/loader");
+    const viLocale = (await import("@/locales/vi.json")).default;
+    const zhLocale = (await import("@/locales/zh.json")).default;
+
+    await expect(getLocale("vi")).resolves.toEqual(viLocale);
+    await expect(getLocale("zh")).resolves.toEqual(zhLocale);
+  });
+
   it("falls back to default locale for unsupported locale", async () => {
     vi.resetModules();
     const { getLocale } = await import("@/i18n/loader");

@@ -15,7 +15,7 @@ Owns module wiring, local config, and child ownership boundaries.
 - `src/durable-objects/` - `RateLimiter` and `JobScheduler` classes.
 - `src/jobs/` - scheduler registry and job implementations.
 - `src/validators/` - Zod request validation modules and shared schemas.
-- `migrations/` - SQL history (`0000`..`0028`) plus `meta/` snapshots.
+- `migrations/` - SQL history (`0000`..`0032`) plus `meta/` snapshots.
 - `drizzle.config.ts` - migration generation config.
 - `wrangler.toml` - worker deployment/runtime config.
 - `worker-configuration.d.ts` - generated bindings/types.

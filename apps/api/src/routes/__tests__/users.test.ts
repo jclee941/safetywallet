@@ -20,6 +20,10 @@ vi.mock("../../lib/crypto", () => ({
   decrypt: vi.fn(async () => "010-1234-5678"),
 }));
 
+vi.mock("../../lib/session-cache", () => ({
+  invalidateCachedUser: vi.fn(async () => {}),
+}));
+
 vi.mock("../../lib/response", async () => {
   const actual =
     await vi.importActual<typeof import("../../lib/response")>(
@@ -187,6 +191,20 @@ describe("routes/users", () => {
   });
 
   describe("PATCH /users/me", () => {
+    it("returns 400 for malformed JSON body", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/users/me",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: "{invalid",
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("updates user name", async () => {
       mockUpdateGet.mockResolvedValue({
         id: "user-1",
@@ -221,6 +239,32 @@ describe("routes/users", () => {
         env,
       );
       expect(res.status).toBe(400);
+    });
+
+    it("invalidates KV cache when KV binding is present", async () => {
+      mockUpdateGet.mockResolvedValue({
+        id: "user-1",
+        name: "NewName",
+        nameMasked: "N******",
+        phoneEncrypted: null,
+        piiViewFull: false,
+        role: "WORKER",
+      });
+      const { app, env } = await createApp(makeAuth());
+      const mockKV = { delete: vi.fn().mockResolvedValue(undefined) };
+      env.KV = mockKV;
+      const res = await app.request(
+        "/users/me",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "NewName" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const { invalidateCachedUser } = await import("../../lib/session-cache");
+      expect(invalidateCachedUser).toHaveBeenCalledWith(mockKV, "user-1");
     });
   });
 

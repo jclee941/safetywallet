@@ -171,6 +171,20 @@ describe("ReviewActions", () => {
     expect(screen.getByRole("button", { name: "승인" })).toBeInTheDocument();
   });
 
+  it("cancels points panel flow", async () => {
+    render(<ReviewActions postId="post-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "승인" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /승인 \(5점 지급\)/ }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.getByRole("button", { name: "승인" })).toBeInTheDocument();
+  });
+
   it("cancels info request flow", () => {
     render(
       <ReviewActions postId="post-1" currentStatus={ReviewStatus.IN_REVIEW} />,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { AlertPayload } from "../alerting";
 import {
   getAlertConfig,
   setAlertConfig,
@@ -55,6 +56,17 @@ describe("alerting", () => {
       const config = await getAlertConfig(kv);
       expect(config.webhookUrl).toBe("");
     });
+
+    it("returns defaults when KV get throws", async () => {
+      const kv = mockKV();
+      (kv.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("kv read failed"),
+      );
+
+      const config = await getAlertConfig(kv);
+      expect(config.webhookUrl).toBe("");
+      expect(config.enabled).toBe(true);
+    });
   });
 
   describe("setAlertConfig", () => {
@@ -83,6 +95,20 @@ describe("alerting", () => {
       expect(updated.webhookUrl).toBe("https://a.com");
       expect(updated.cooldownSeconds).toBe(900);
       expect(updated.enabled).toBe(false);
+    });
+
+    it("still returns merged config when KV put throws", async () => {
+      const kv = mockKV();
+      (kv.put as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("kv write failed"),
+      );
+
+      const result = await setAlertConfig(kv, {
+        webhookUrl: "https://example.test/hook",
+      });
+
+      expect(result.webhookUrl).toBe("https://example.test/hook");
+      expect(result.enabled).toBe(true);
     });
   });
 
@@ -201,6 +227,129 @@ describe("alerting", () => {
         "https://discord.com/api/webhooks/123/abc/slack",
         expect.objectContaining({ method: "POST" }),
       );
+    });
+
+    it("continues when cooldown KV read fails", async () => {
+      const kv = mockKV();
+      await kv.put(
+        "alert-config",
+        JSON.stringify({ webhookUrl: "https://hooks.slack.com/test" }),
+      );
+
+      const getSpy = kv.get as ReturnType<typeof vi.fn>;
+      getSpy.mockImplementation(async (key: string) => {
+        if (key.startsWith("alert-cooldown:")) {
+          throw new Error("cooldown read failed");
+        }
+        if (key === "alert-config") {
+          return JSON.stringify({ webhookUrl: "https://hooks.slack.com/test" });
+        }
+        return null;
+      });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+      );
+
+      const result = await fireAlert(kv, buildFasDownAlert("test"));
+      expect(result).toBe(true);
+    });
+
+    it("returns true even when cooldown KV write fails after webhook success", async () => {
+      const kv = mockKV();
+      await setAlertConfig(kv, { webhookUrl: "https://hooks.slack.com/test" });
+
+      const putSpy = kv.put as ReturnType<typeof vi.fn>;
+      putSpy.mockRejectedValueOnce(new Error("cooldown write failed"));
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+      );
+
+      const result = await fireAlert(kv, buildFasDownAlert("test"));
+      expect(result).toBe(true);
+    });
+
+    it("sends webhook with warning severity formatting", async () => {
+      const kv = mockKV();
+      await setAlertConfig(kv, { webhookUrl: "https://hooks.slack.com/test" });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+      );
+
+      const warningAlert = buildHighErrorRateAlert(6, 5, 60, 1000);
+      const result = await fireAlert(kv, warningAlert);
+      expect(result).toBe(true);
+
+      const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      expect(body.text).toContain("[WARNING]");
+    });
+
+    it("sends webhook with info severity and no metadata", async () => {
+      const kv = mockKV();
+      await setAlertConfig(kv, { webhookUrl: "https://hooks.slack.com/test" });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+      );
+
+      const infoAlert: AlertPayload = {
+        type: "CRON_FAILURE",
+        severity: "info",
+        title: "Info Test",
+        message: "test message",
+        timestamp: new Date().toISOString(),
+      };
+      const result = await fireAlert(kv, infoAlert);
+      expect(result).toBe(true);
+
+      const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      expect(body.text).toContain("[INFO]");
+      const detailsBlock = body.blocks.find(
+        (b: Record<string, unknown>) =>
+          b.type === "section" &&
+          typeof (b.text as Record<string, unknown>)?.text === "string" &&
+          ((b.text as Record<string, string>).text as string).startsWith(
+            "*Details:*",
+          ),
+      );
+      expect(detailsBlock).toBeUndefined();
+    });
+
+    it("does not append /slack to Discord URL already ending with /slack", async () => {
+      const kv = mockKV();
+      await setAlertConfig(kv, {
+        webhookUrl: "https://discord.com/api/webhooks/123/abc/slack",
+      });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("ok", { status: 200 })),
+      );
+
+      await fireAlert(kv, buildFasDownAlert("test"));
+
+      expect(fetch).toHaveBeenCalledWith(
+        "https://discord.com/api/webhooks/123/abc/slack",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    it("returns false when fetch throws non-Error value", async () => {
+      const kv = mockKV();
+      await setAlertConfig(kv, { webhookUrl: "https://hooks.slack.com/test" });
+
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue("string error"));
+
+      const result = await fireAlert(kv, buildFasDownAlert("test"));
+      expect(result).toBe(false);
     });
   });
 

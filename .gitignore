@@ -80,6 +80,7 @@ nginx.conf
 pnpm-workspace.yaml
 
 # AI session artifacts
+.sisyphus/
 SESSION_SUMMARY.md
 COMPLETE_AUDIT_REPORT.md
 CRITICAL_FIXES_APPLIED.md

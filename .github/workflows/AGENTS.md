@@ -17,13 +17,16 @@
 - `labeler.yml` — PR path label sync.
 - `issue-label.yml` — issue form label automation.
 - `issue-lifecycle.yml` — issue state automation.
+- `issue-duplicate.yml` / `issue-project.yml` / `issue-sla.yml` — extended issue automation.
 - `release-drafter.yml` — release notes draft automation.
 - `stale.yml` / `lock-threads.yml` / `welcome.yml` — community hygiene automation.
 - `pr-size.yml` / `branch-cleanup.yml` / `auto-merge.yml` / `auto-approve-runs.yml` — PR lifecycle automation.
 - `dependabot-auto-fix.yml` — Dependabot remediation automation.
 - `ssl-fix.yml` — manual SSL remediation helper.
 - `codex-approve-runs.yml` / `codex-auto-issue.yml` / `codex-issue-timeout.yml` / `codex-pr-normalize.yml` / `codex-pr-review.yml` / `codex-triage.yml` — Codex automation set.
-- Workflow file count: 25 YAML workflows + this `AGENTS.md` = 26 files.
+- `opencode-agent-timeout.yml` / `opencode-issue-sync.yml` / `opencode-pr-sync.yml` / `opencode-writeback.yml` — OpenCode integration set.
+- `pr-normalize.yml` — PR title normalization.
+- Workflow file count: 33 YAML workflows + this `AGENTS.md` = 34 files.
 
 ## CONVENTIONS
 
@@ -42,7 +45,7 @@
 
 ## DRIFT GUARDS
 
-- Confirm directory remains 26 entries with 25 `.yml` workflows.
+- Confirm directory remains 34 entries with 33 `.yml` workflows.
 - Confirm `ci-notify-failure.yml` and `deploy-monitoring.yml` still align to CI trigger contracts.
 - Confirm Codex workflow set list matches on-disk filenames.
 - Confirm parent `.github/AGENTS.md` counts match this file.

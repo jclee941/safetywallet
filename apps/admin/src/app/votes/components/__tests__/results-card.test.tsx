@@ -107,4 +107,65 @@ describe("results card", () => {
     rerender(<ResultsCard month="2026-02" />);
     expect(screen.getByText("투표 결과가 없습니다")).toBeInTheDocument();
   });
+
+  it("shows toast and skips export when there are no results", () => {
+    mockUseVoteResults.mockReturnValueOnce({
+      data: [],
+      isLoading: false,
+    } as never);
+
+    render(<ResultsCard month="2026-02" />);
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
+
+    expect(mockExportResultsCsv).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: "destructive",
+        description: "투표 결과가 없습니다.",
+      }),
+    );
+  });
+
+  it("renders sorted ranking by vote count desc", () => {
+    mockUseVoteResults.mockReturnValueOnce({
+      data: [
+        {
+          candidateId: "c-low",
+          voteCount: 1,
+          user: { nameMasked: "낮은득표", companyName: "A" },
+        },
+        {
+          candidateId: "c-high",
+          voteCount: 10,
+          user: { nameMasked: "높은득표", companyName: "B" },
+        },
+      ],
+      isLoading: false,
+    } as never);
+
+    render(<ResultsCard month="2026-02" />);
+    const rows = screen.getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("1");
+    expect(rows[1]).toHaveTextContent("높은득표");
+    expect(rows[2]).toHaveTextContent("2");
+    expect(rows[2]).toHaveTextContent("낮은득표");
+  });
+
+  it("shows unknown error message when exporter throws non-error", async () => {
+    mockExportResultsCsv.mockImplementationOnce(() => {
+      throw "boom";
+    });
+
+    render(<ResultsCard month="2026-02" />);
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+          description: "알 수 없는 오류",
+        }),
+      );
+    });
+  });
 });

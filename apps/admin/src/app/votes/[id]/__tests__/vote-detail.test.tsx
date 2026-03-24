@@ -1,19 +1,27 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import VoteDetailPage from "../vote-detail";
+import { apiFetch } from "@/lib/api";
 
 const pushMock = vi.fn();
 const toastMock = vi.fn();
 const invalidateQueriesMock = vi.fn();
 const mutateMock = vi.fn();
+const alertDialogOpenStates: boolean[] = [];
+
+const AlertDialogContext = createContext<{
+  onOpenChange?: (open: boolean) => void;
+}>({});
 
 const useQueryMock = vi.fn();
 const useMutationMock = vi.fn();
+const mockApiFetch = vi.mocked(apiFetch);
+let currentMonthParam = "2099-12";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  useParams: () => ({ id: "2099-12" }),
+  useParams: () => ({ id: currentMonthParam }),
 }));
 
 vi.mock("@/stores/auth", () => ({
@@ -58,7 +66,24 @@ vi.mock("@safetywallet/ui", () => ({
       {children}
     </button>
   ),
-  AlertDialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  AlertDialog: ({
+    children,
+    open,
+    onOpenChange,
+  }: {
+    children: ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) => {
+    if (typeof open === "boolean") {
+      alertDialogOpenStates.push(open);
+    }
+    return (
+      <AlertDialogContext.Provider value={{ onOpenChange }}>
+        <div>{children}</div>
+      </AlertDialogContext.Provider>
+    );
+  },
   AlertDialogTrigger: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -79,11 +104,12 @@ vi.mock("@safetywallet/ui", () => ({
   ),
   AlertDialogCancel: ({
     children,
+    onClick,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type="button" {...props}>
+    <AlertDialogCancelButton onClick={onClick} {...props}>
       {children}
-    </button>
+    </AlertDialogCancelButton>
   ),
   AlertDialogAction: ({
     children,
@@ -95,6 +121,26 @@ vi.mock("@safetywallet/ui", () => ({
   ),
   useToast: () => ({ toast: toastMock }),
 }));
+
+function AlertDialogCancelButton({
+  children,
+  onClick,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const { onOpenChange } = useContext(AlertDialogContext);
+  return (
+    <button
+      type="button"
+      {...props}
+      onClick={(event) => {
+        onClick?.(event);
+        onOpenChange?.(false);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 const baseResults = [
   {
@@ -113,10 +159,13 @@ const baseResults = [
 
 describe("vote detail page", () => {
   beforeEach(() => {
+    currentMonthParam = "2099-12";
     pushMock.mockReset();
     toastMock.mockReset();
     invalidateQueriesMock.mockReset();
     mutateMock.mockReset();
+    mockApiFetch.mockReset();
+    alertDialogOpenStates.length = 0;
 
     useQueryMock.mockReturnValue({ data: baseResults, isLoading: false });
     useMutationMock.mockImplementation(
@@ -186,6 +235,45 @@ describe("vote detail page", () => {
     );
   });
 
+  it("resets delete dialog state when dialog closes", async () => {
+    render(<VoteDetailPage />);
+
+    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButtons[0]);
+    expect(alertDialogOpenStates).toContain(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+    await waitFor(() => {
+      expect(alertDialogOpenStates.at(-1)).toBe(false);
+    });
+  });
+
+  it("shows destructive toast when delete fails", async () => {
+    useMutationMock.mockImplementationOnce(
+      ({ onError }: { onError?: () => void }) => ({
+        mutate: () => {
+          mutateMock();
+          onError?.();
+        },
+      }),
+    );
+
+    render(<VoteDetailPage />);
+    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButtons[1]);
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "삭제에 실패했습니다.",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
   it("disables export when no results", () => {
     useQueryMock.mockReturnValueOnce({
       data: [],
@@ -197,5 +285,85 @@ describe("vote detail page", () => {
       screen.getByRole("button", { name: "결과 내보내기" }),
     ).toBeDisabled();
     expect(screen.getByText("등록된 후보자가 없습니다.")).toBeInTheDocument();
+  });
+
+  it("hides candidate registration and shows ended status for past month", () => {
+    currentMonthParam = "2000-01";
+    render(<VoteDetailPage />);
+
+    expect(screen.getByText("종료")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "후보 등록" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to plain name when masked name is missing", () => {
+    useQueryMock.mockReturnValueOnce({
+      data: [
+        {
+          candidateId: "c2",
+          voteCount: 1,
+          rank: 1,
+          user: {
+            id: "u2",
+            nameMasked: null,
+            name: "실명사용자",
+            companyName: "테스트건설",
+            tradeType: null,
+          },
+        },
+      ],
+      isLoading: false,
+    });
+
+    render(<VoteDetailPage />);
+    expect(screen.getByText("실명사용자")).toBeInTheDocument();
+    expect(screen.getByText("테스트건설")).toBeInTheDocument();
+    expect(screen.queryByText("·")).not.toBeInTheDocument();
+  });
+
+  it("executes queryFn and mutationFn with expected api endpoints", async () => {
+    useQueryMock.mockImplementationOnce(
+      ({ queryFn }: { queryFn: () => Promise<unknown> }) => {
+        void queryFn();
+        return { data: baseResults, isLoading: false };
+      },
+    );
+
+    useMutationMock.mockImplementationOnce(
+      ({
+        mutationFn,
+        onSuccess,
+      }: {
+        mutationFn: (candidateId: string) => Promise<void>;
+        onSuccess?: () => void;
+      }) => ({
+        mutate: async (candidateId: string) => {
+          await mutationFn(candidateId);
+          mutateMock();
+          onSuccess?.();
+        },
+      }),
+    );
+
+    mockApiFetch
+      .mockResolvedValueOnce(baseResults)
+      .mockResolvedValueOnce(undefined);
+
+    render(<VoteDetailPage />);
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/admin/votes/results?siteId=site-1&month=2099-12",
+      );
+    });
+
+    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
+    fireEvent.click(deleteButtons[1]);
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith("/admin/votes/candidates/c1", {
+        method: "DELETE",
+      });
+    });
   });
 });

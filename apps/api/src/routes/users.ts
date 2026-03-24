@@ -10,8 +10,6 @@ import {
   sites,
   pointsLedger,
   posts,
-  reviews,
-  actions,
 } from "../db/schema";
 import { logAuditWithContext } from "../lib/audit";
 import { success, error } from "../lib/response";

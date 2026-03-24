@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import {
+  generateAnnouncementDraft,
+  getAiCredentials,
+} from "../../lib/gemini-ai";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -14,6 +18,11 @@ vi.mock("../../middleware/auth", () => ({
 
 vi.mock("../../middleware/attendance", () => ({
   attendanceMiddleware: vi.fn(),
+}));
+
+vi.mock("../../lib/gemini-ai", () => ({
+  generateAnnouncementDraft: vi.fn(),
+  getAiCredentials: vi.fn(),
 }));
 
 vi.mock("../../lib/response", async () => {
@@ -418,6 +427,189 @@ describe("routes/announcements", () => {
         env,
       );
       expect(res.status).toBe(403);
+    });
+
+    it("clears scheduledAt and publishes when scheduledAt is null", async () => {
+      mockSelectFromWhereGet.mockResolvedValue({
+        id: "a1",
+        authorId: "user-1",
+        siteId: "site-1",
+      });
+      mockUpdateReturningGet.mockResolvedValue({ id: "a1", isPublished: true });
+
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
+      const res = await app.request(
+        "/announcements/a1",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt: null }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("sets scheduledAt and unpublishes when future date is provided", async () => {
+      mockSelectFromWhereGet.mockResolvedValue({
+        id: "a1",
+        authorId: "user-1",
+        siteId: "site-1",
+      });
+      mockUpdateReturningGet.mockResolvedValue({
+        id: "a1",
+        isPublished: false,
+      });
+
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
+      const res = await app.request(
+        "/announcements/a1",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt: "2026-12-25T09:00:00.000Z" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 403 when non-admin author has no site membership", async () => {
+      mockSelectFromWhereGet
+        .mockResolvedValueOnce({
+          id: "a1",
+          authorId: "user-1",
+          siteId: "site-1",
+        })
+        .mockResolvedValueOnce(null);
+
+      const { app, env } = await createApp(makeAuth("WORKER", "user-1"));
+      const res = await app.request(
+        "/announcements/a1",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Updated" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as {
+        error: { code: string };
+      };
+      expect(body.error.code).toBe("NOT_AUTHORIZED");
+    });
+  });
+
+  describe("POST /announcements/generate-draft", () => {
+    it("returns 400 when keywords are missing", async () => {
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/announcements/generate-draft",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteId: "site-1" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 503 when AI is not configured", async () => {
+      mockSelectFromWhereGet.mockResolvedValue({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+        role: "SITE_ADMIN",
+      });
+      vi.mocked(getAiCredentials).mockReturnValue(null as never);
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/announcements/generate-draft",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: "안전", siteId: "site-1" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(503);
+    });
+
+    it("returns 403 when non-admin tries to generate", async () => {
+      mockSelectFromWhereGet.mockResolvedValue(null);
+      vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "x" } as never);
+
+      const { app, env } = await createApp(makeAuth("WORKER"));
+      const res = await app.request(
+        "/announcements/generate-draft",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: "안전", siteId: "site-1" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 500 when AI draft generation fails", async () => {
+      mockSelectFromWhereGet.mockResolvedValue({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+        role: "SITE_ADMIN",
+      });
+      vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "x" } as never);
+      vi.mocked(generateAnnouncementDraft).mockResolvedValue(null);
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/announcements/generate-draft",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: "안전", siteId: "site-1" }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(500);
+    });
+
+    it("returns generated draft on success", async () => {
+      mockSelectFromWhereGet.mockResolvedValue({
+        userId: "user-1",
+        siteId: "site-1",
+        status: "ACTIVE",
+        role: "SITE_ADMIN",
+      });
+      vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "x" } as never);
+      vi.mocked(generateAnnouncementDraft).mockResolvedValue({
+        title: "Draft Title",
+        content: "Draft Content",
+        modelVersion: "gemini-2.0-flash",
+      });
+
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request(
+        "/announcements/generate-draft",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: "안전", siteId: "site-1" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { title: string; content: string };
+      };
+      expect(body.data.title).toBe("Draft Title");
+      expect(body.data.content).toBe("Draft Content");
     });
   });
 

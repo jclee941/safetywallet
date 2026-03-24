@@ -169,20 +169,51 @@ describe("rate-limit lib", () => {
   describe("cleanupExpiredEntries (via checkInMemoryLimit)", () => {
     it("cleans up expired entries after 5 min interval", async () => {
       const envNoRL = makeEnvNoRL();
-      // Fill two different keys
-      for (let i = 0; i < 2; i++) {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      try {
         await checkRateLimit(envNoRL, "clean-a", 5, 100);
         await checkRateLimit(envNoRL, "clean-b", 5, 100);
-      }
-      // Advance past both the window (100ms) AND cleanup interval (5min)
-      vi.useFakeTimers();
-      vi.advanceTimersByTime(6 * 60 * 1000);
-      vi.useRealTimers();
 
-      // Next call should trigger cleanup of expired entries
-      const result = await checkRateLimit(envNoRL, "clean-c", 5, 60000);
-      expect(result.allowed).toBe(true);
-      expect(result.remaining).toBe(4);
+        vi.setSystemTime(new Date("2026-01-01T00:06:00.000Z"));
+
+        const fresh = await checkRateLimit(envNoRL, "clean-a", 5, 100);
+        expect(fresh.allowed).toBe(true);
+        expect(fresh.remaining).toBe(4);
+
+        const newKey = await checkRateLimit(envNoRL, "clean-c", 5, 60000);
+        expect(newKey.allowed).toBe(true);
+        expect(newKey.remaining).toBe(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("deletes expired fallback entries after cleanup interval elapses", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+      try {
+        vi.resetModules();
+        const mod = await import("../rate-limit");
+        const envNoRL = makeEnvNoRL();
+
+        await mod.checkRateLimit(envNoRL, "expired-1", 5, 1000);
+        await mod.checkRateLimit(envNoRL, "expired-2", 5, 1000);
+
+        vi.setSystemTime(new Date("2026-01-01T00:06:00.000Z"));
+        await mod.checkRateLimit(envNoRL, "cleanup-trigger", 5, 60000);
+
+        const afterCleanup = await mod.checkRateLimit(
+          envNoRL,
+          "expired-1",
+          5,
+          1000,
+        );
+        expect(afterCleanup.allowed).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

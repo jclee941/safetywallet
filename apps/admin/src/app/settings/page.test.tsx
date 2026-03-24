@@ -95,4 +95,24 @@ describe("SettingsPage", () => {
     expect(screen.getByText("설정이 저장되었습니다.")).toBeInTheDocument();
     expect(screen.getByText("설정 저장에 실패했습니다.")).toBeInTheDocument();
   });
+
+  it("marks dirty when active checkbox changes", async () => {
+    mutateAsyncMock.mockResolvedValue({ ok: true });
+    render(<SettingsPage />);
+
+    const saveButton = screen.getByRole("button", { name: "저장" });
+    const activeCheckbox = screen.getByRole("checkbox");
+
+    expect(saveButton).toBeDisabled();
+    fireEvent.click(activeCheckbox);
+    expect(saveButton).not.toBeDisabled();
+
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        siteId: "site-1",
+        data: { name: "현장 A", active: false },
+      });
+    });
+  });
 });

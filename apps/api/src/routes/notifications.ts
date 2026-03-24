@@ -9,10 +9,8 @@ import { rateLimitMiddleware } from "../middleware/rate-limit";
 import { pushSubscriptions, users } from "../db/schema";
 import { success, error } from "../lib/response";
 import {
-  sendPushNotification,
   sendPushBulk,
   shouldRemoveSubscription,
-  type PushMessage,
   type VapidKeys,
 } from "../lib/web-push";
 import { createSmsClient } from "../lib/sms";
@@ -115,7 +113,7 @@ app.delete("/unsubscribe", async (c) => {
     return error(c, "MISSING_ENDPOINT", "endpoint 파라미터가 필요합니다.");
   }
 
-  const result = await db
+  await db
     .delete(pushSubscriptions)
     .where(
       and(

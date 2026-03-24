@@ -27,6 +27,18 @@ vi.mock("../components/results-card", () => ({
 }));
 
 describe("votes page", () => {
+  it("uses current month as default and keeps card props in sync", () => {
+    render(<VotesPage />);
+
+    const defaultMonth = new Date().toISOString().slice(0, 7);
+    const monthInput = screen.getByDisplayValue(defaultMonth);
+
+    expect(monthInput).toHaveAttribute("type", "month");
+    expect(screen.getByTestId("period")).toHaveTextContent(defaultMonth);
+    expect(screen.getByTestId("candidates")).toHaveTextContent(defaultMonth);
+    expect(screen.getByTestId("results")).toHaveTextContent(defaultMonth);
+  });
+
   it("renders title and passes selected month to child cards", () => {
     render(<VotesPage />);
 
@@ -41,5 +53,23 @@ describe("votes page", () => {
     expect(screen.getByTestId("period")).toHaveTextContent("2026-03");
     expect(screen.getByTestId("candidates")).toHaveTextContent("2026-03");
     expect(screen.getByTestId("results")).toHaveTextContent("2026-03");
+
+    fireEvent.change(monthInput, { target: { value: "2026-04" } });
+    expect(screen.getByTestId("period")).toHaveTextContent("2026-04");
+    expect(screen.getByTestId("candidates")).toHaveTextContent("2026-04");
+    expect(screen.getByTestId("results")).toHaveTextContent("2026-04");
+  });
+
+  it("propagates empty month values from input change", () => {
+    render(<VotesPage />);
+
+    const monthInput = screen.getByDisplayValue(
+      new Date().toISOString().slice(0, 7),
+    );
+    fireEvent.change(monthInput, { target: { value: "" } });
+
+    expect(screen.getByTestId("period")).toHaveTextContent("");
+    expect(screen.getByTestId("candidates")).toHaveTextContent("");
+    expect(screen.getByTestId("results")).toHaveTextContent("");
   });
 });

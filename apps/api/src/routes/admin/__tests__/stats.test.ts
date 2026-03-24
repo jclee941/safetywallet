@@ -84,6 +84,12 @@ vi.mock("../../../db/schema", () => ({
     createdAt: "createdAt",
     updatedAt: "updatedAt",
   },
+  siteMemberships: {
+    userId: "userId",
+    siteId: "siteId",
+    status: "status",
+    role: "role",
+  },
   attendance: { checkinAt: "checkinAt" },
 }));
 
@@ -183,6 +189,80 @@ describe("admin/stats", () => {
         data: { stats: Record<string, unknown> };
       };
       expect(body.data.stats.totalUsers).toBe(0);
+    });
+
+    it("returns 403 when SITE_ADMIN requests unmanaged site", async () => {
+      mockGet.mockResolvedValueOnce(null);
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/stats?siteId=site-1", {}, env);
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when SITE_ADMIN has WORKER role membership", async () => {
+      mockGet.mockResolvedValueOnce({ role: "WORKER" });
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/stats?siteId=site-1", {}, env);
+      expect(res.status).toBe(403);
+    });
+
+    it("returns stats filtered by siteId for SUPER_ADMIN", async () => {
+      mockGet.mockResolvedValue({ count: 5, avgHours: 1.0 });
+      mockAll.mockResolvedValue([{ category: "HAZARD", count: 3 }]);
+      const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
+      const res = await app.request("/stats?siteId=site-1", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { stats: Record<string, unknown> };
+      };
+      expect(body.data.stats).toBeDefined();
+      expect(body.data.stats.totalUsers).toBeDefined();
+    });
+
+    it("falls back to 0 active users when FAS call throws", async () => {
+      mockGet.mockResolvedValue({ count: 10, avgHours: 1.2 });
+      mockAll.mockResolvedValue([]);
+      mockFasRealtimeStats.mockRejectedValueOnce(new Error("fas down"));
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/stats", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { stats: { activeUsersToday: number } };
+      };
+      expect(body.data.stats.activeUsersToday).toBe(0);
+    });
+
+    it("returns 0 active users when FAS_HYPERDRIVE is missing", async () => {
+      mockGet.mockResolvedValue({ count: 10, avgHours: 1.2 });
+      mockAll.mockResolvedValue([]);
+
+      const { app, env } = await createApp(makeAuth());
+      delete (env as { FAS_HYPERDRIVE?: unknown }).FAS_HYPERDRIVE;
+      const res = await app.request("/stats", {}, env);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { stats: { activeUsersToday: number } };
+      };
+      expect(body.data.stats.activeUsersToday).toBe(0);
+    });
+
+    it("returns 0 active users when FAS_SOURCES is empty", async () => {
+      mockGet.mockResolvedValue({ count: 10, avgHours: 1.2 });
+      mockAll.mockResolvedValue([]);
+
+      const { FAS_SOURCES } = await import("../../../lib/fas");
+      const saved = (FAS_SOURCES as unknown[]).splice(0);
+      try {
+        const { app, env } = await createApp(makeAuth());
+        const res = await app.request("/stats", {}, env);
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          data: { stats: { activeUsersToday: number } };
+        };
+        expect(body.data.stats.activeUsersToday).toBe(0);
+      } finally {
+        (FAS_SOURCES as unknown[]).push(...saved);
+      }
     });
   });
 });

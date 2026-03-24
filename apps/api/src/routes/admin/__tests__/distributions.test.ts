@@ -116,4 +116,78 @@ describe("routes/admin/distributions", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("returns 400 for invalid query schema", async () => {
+    const { app, env } = await createApp();
+    const res = await app.request(
+      "/admin/distributions?page=0&limit=9999",
+      {},
+      env,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("applies siteId filter when provided", async () => {
+    mockAllQueue.push([]);
+    mockGetQueue.push({ totalAmount: 0, recordCount: 0 });
+
+    const { app, env } = await createApp();
+    const res = await app.request(
+      "/admin/distributions?siteId=site-1",
+      {},
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { records: unknown[]; summary: { totalAmount: number } };
+    };
+    expect(body.data.records).toHaveLength(0);
+  });
+
+  it("applies valid reasonCode filter", async () => {
+    mockAllQueue.push([
+      {
+        userId: "u1",
+        userName: "Park",
+        amount: 5,
+        reasonCode: "MANUAL_AWARD",
+        reasonText: "Good",
+        createdAt: new Date(),
+      },
+    ]);
+    mockGetQueue.push({ totalAmount: 5, recordCount: 1 });
+
+    const { app, env } = await createApp();
+    const res = await app.request(
+      "/admin/distributions?reasonCode=MANUAL_AWARD",
+      {},
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        records: { reasonCode: string }[];
+        summary: { totalAmount: number };
+      };
+    };
+    expect(body.data.records).toHaveLength(1);
+    expect(body.data.records[0].reasonCode).toBe("MANUAL_AWARD");
+  });
+
+  it("defaults summary to zero when db returns null", async () => {
+    mockAllQueue.push([]);
+    mockGetQueue.push(undefined);
+
+    const { app, env } = await createApp();
+    const res = await app.request("/admin/distributions", {}, env);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { summary: { totalAmount: number; recordCount: number } };
+    };
+    expect(body.data.summary.totalAmount).toBe(0);
+    expect(body.data.summary.recordCount).toBe(0);
+  });
 });

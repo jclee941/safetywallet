@@ -219,6 +219,31 @@ describe("calculateApprovalPoints", () => {
     expect(result.blocked).toBe(false);
     vi.useRealTimers();
   });
+
+  it("falls back daily stats to zero when aggregate query returns empty", async () => {
+    dailyStatsResult = [];
+
+    const result = await calculateApprovalPoints(mockDb as never, {
+      ...baseInput,
+      riskLevel: null,
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.totalPoints).toBe(10);
+  });
+
+  it("handles null location fields in duplicate check path", async () => {
+    duplicateCheckResult = [{ id: "dup-null-loc" }];
+
+    const result = await calculateApprovalPoints(mockDb as never, {
+      ...baseInput,
+      locationFloor: null,
+      locationZone: null,
+    });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockReason).toBe("DUPLICATE_WITHIN_24H");
+  });
 });
 
 describe("calculateFalseReportPenalty", () => {
@@ -349,6 +374,48 @@ describe("awardApprovalPoints", () => {
     expect(result.awarded).toBe(true);
     expect(result.ledgerId).toBe("ledger-existing");
     expect(result.result.totalPoints).toBe(12);
+    selectSpy.mockRestore();
+  });
+
+  it("uses fallback breakdown when existing ledger reasonText is null", async () => {
+    const selectSpy = vi.spyOn(mockDb, "select");
+    selectSpy
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi
+              .fn()
+              .mockResolvedValue([
+                { id: "ledger-existing", amount: 12, reasonText: null },
+              ]),
+          }),
+        }),
+      } as never)
+      .mockImplementation((arg: Record<string, unknown>) => {
+        if (arg && "postCount" in arg) {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(dailyStatsResult),
+            }),
+          } as never;
+        }
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        } as never;
+      });
+
+    const result = await awardApprovalPoints(
+      mockDb as never,
+      baseInput,
+      "admin-1",
+    );
+
+    expect(result.awarded).toBe(true);
+    expect(result.result.breakdown).toBe("기존 승인 포인트");
     selectSpy.mockRestore();
   });
 

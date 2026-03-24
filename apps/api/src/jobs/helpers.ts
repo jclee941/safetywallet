@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { siteMemberships, users, sites, syncErrors } from "../db/schema";
 import { createLogger } from "../lib/logger";
 

@@ -43,7 +43,8 @@ vi.mock("@/hooks/use-api", () => ({
 
 vi.mock("@safetywallet/ui", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
-  AlertDialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  AlertDialog: ({ children, open }: { children: ReactNode; open?: boolean }) =>
+    open ? <div>{children}</div> : null,
   AlertDialogContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -60,7 +61,7 @@ vi.mock("@safetywallet/ui", () => ({
     <div>{children}</div>
   ),
   AlertDialogCancel: ({ children }: { children: ReactNode }) => (
-    <button>{children}</button>
+    <button type="button">{children}</button>
   ),
   AlertDialogAction: ({
     children,
@@ -70,7 +71,8 @@ vi.mock("@safetywallet/ui", () => ({
       {children}
     </button>
   ),
-  Dialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) =>
+    open ? <div>{children}</div> : null,
   DialogContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -217,5 +219,130 @@ describe("quizzes tab", () => {
       );
     });
     expect(createQuestionAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it("edits quiz", async () => {
+    render(<QuizzesTab />);
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[0]);
+    fireEvent.change(screen.getByPlaceholderText("퀴즈 제목"), {
+      target: { value: "수정 퀴즈" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "퀴즈 수정" }));
+
+    await waitFor(() => {
+      expect(updateQuizAsyncMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "q1" }),
+      );
+    });
+  });
+
+  it("toggles quiz registration form", () => {
+    render(<QuizzesTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: /퀴즈 등록/ }));
+    expect(screen.getAllByText("퀴즈 등록").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "접기" }));
+    expect(
+      screen.queryByRole("button", { name: "접기" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears editing state when collapsing the form", () => {
+    render(<QuizzesTab />);
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[0]);
+    expect(
+      screen.getByRole("button", { name: "퀴즈 수정" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "접기" }));
+    fireEvent.click(screen.getByRole("button", { name: "퀴즈 등록" }));
+
+    expect(
+      screen.getByRole("button", { name: "퀴즈 등록" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "퀴즈 수정" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("deletes quiz successfully and clears expanded question panel", async () => {
+    deleteQuizAsyncMock.mockResolvedValueOnce(undefined);
+
+    render(<QuizzesTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: "문항 관리" }));
+    expect(screen.getByText(/문항 관리 - 안전 퀴즈/)).toBeInTheDocument();
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(deleteQuizAsyncMock).toHaveBeenCalledWith("q1");
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: "퀴즈가 삭제되었습니다." }),
+      );
+      expect(
+        screen.queryByText(/문항 관리 - 안전 퀴즈/),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears current edit target when deleting the same quiz", async () => {
+    deleteQuizAsyncMock.mockResolvedValueOnce(undefined);
+
+    render(<QuizzesTab />);
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[0]);
+    expect(
+      screen.getByRole("button", { name: "퀴즈 수정" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(iconButtons[1]);
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(deleteQuizAsyncMock).toHaveBeenCalledWith("q1");
+      expect(
+        screen.queryByRole("button", { name: "퀴즈 수정" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows destructive toast when quiz delete fails", async () => {
+    deleteQuizAsyncMock.mockRejectedValueOnce(new Error("delete failed"));
+
+    render(<QuizzesTab />);
+
+    const iconButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent === "");
+    fireEvent.click(iconButtons[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+          description: "퀴즈 삭제에 실패했습니다.",
+        }),
+      );
+    });
   });
 });

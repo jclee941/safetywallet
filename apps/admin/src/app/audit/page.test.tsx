@@ -80,4 +80,37 @@ describe("AuditPage", () => {
     render(<AuditPage />);
     expect(screen.getByText("로딩 중...")).toBeInTheDocument();
   });
+
+  it("falls back to raw labels and default performer", () => {
+    mockUseAuditLogs.mockReturnValue({
+      data: [
+        {
+          id: "audit-2",
+          createdAt: "2026-02-28T00:00:00.000Z",
+          action: "CUSTOM_ACTION",
+          targetType: "customType",
+          targetId: undefined,
+          performer: undefined,
+        },
+      ],
+      isLoading: false,
+    } as never);
+
+    render(<AuditPage />);
+
+    expect(screen.getByText("CUSTOM_ACTION")).toBeInTheDocument();
+    expect(screen.getByText("customType")).toBeInTheDocument();
+    expect(screen.getByText("시스템")).toBeInTheDocument();
+    expect(screen.getByText("...")).toBeInTheDocument();
+  });
+
+  it("uses default empty message when logs are absent", () => {
+    mockUseAuditLogs.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    } as never);
+
+    render(<AuditPage />);
+    expect(screen.getByText("로그가 없습니다")).toBeInTheDocument();
+  });
 });

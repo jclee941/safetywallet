@@ -23,7 +23,15 @@ function parseErrorMessage(err: unknown, t: (key: string) => string): string {
   if (err instanceof Error) {
     try {
       const parsed = JSON.parse(err.message);
-      const code = parsed?.error?.code;
+      const rawCode =
+        parsed?.error?.code ??
+        (typeof parsed?.error === "string" ? parsed.error : undefined);
+      const code =
+        rawCode === "accountLocked"
+          ? "ACCOUNT_LOCKED"
+          : rawCode === "tooManyAttempts"
+            ? "RATE_LIMIT_EXCEEDED"
+            : rawCode;
       if (code && ERROR_CODES[code]) {
         switch (ERROR_CODES[code]) {
           case "auth.error.accountNotFound":

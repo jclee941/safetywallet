@@ -43,7 +43,6 @@ export const RejectReason = [
   "IRRELEVANT",
   "OTHER",
 ] as const;
-export const TaskStatus = ["OPEN", "IN_PROGRESS", "DONE"] as const; // @deprecated
 export const ActionStatusUpdate = [
   "ASSIGNED",
   "IN_PROGRESS",

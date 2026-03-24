@@ -89,5 +89,45 @@ describe("db/helpers", () => {
 
       expect(batchFn).toHaveBeenCalledTimes(2);
     });
+
+    it("records failed chunks and continues when at least one chunk succeeds", async () => {
+      const { db, batchFn } = createBatchableD1();
+      const ops = Array.from({ length: 250 }, () => makeMockPromise());
+
+      batchFn
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(new Error("chunk failed"))
+        .mockResolvedValueOnce([]);
+
+      const result = await dbBatchChunked(db, ops);
+
+      expect(result.totalOps).toBe(250);
+      expect(result.completedOps).toBe(150);
+      expect(result.failedChunks).toBe(1);
+      expect(result.errors).toEqual([{ chunkIndex: 1, error: "chunk failed" }]);
+    });
+
+    it("stringifies non-Error failures in chunk errors", async () => {
+      const { db, batchFn } = createBatchableD1();
+      const ops = Array.from({ length: 120 }, () => makeMockPromise());
+
+      batchFn.mockRejectedValueOnce("db-down").mockResolvedValueOnce([]);
+
+      const result = await dbBatchChunked(db, ops);
+
+      expect(result.failedChunks).toBe(1);
+      expect(result.errors[0]).toEqual({ chunkIndex: 0, error: "db-down" });
+    });
+
+    it("throws when all chunks fail", async () => {
+      const { db, batchFn } = createBatchableD1();
+      const ops = Array.from({ length: 50 }, () => makeMockPromise());
+
+      batchFn.mockRejectedValue(new Error("all failed"));
+
+      await expect(dbBatchChunked(db, ops)).rejects.toThrow(
+        "dbBatchChunked failed: all chunks failed",
+      );
+    });
   });
 });

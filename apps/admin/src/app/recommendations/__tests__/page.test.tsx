@@ -186,10 +186,100 @@ describe("RecommendationsPage", () => {
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
   });
 
+  it("moves between pages using pagination buttons", () => {
+    mockUseRecommendations.mockReturnValue(
+      toResult({
+        data: {
+          items: sampleItems,
+          pagination: { page: 1, limit: 20, total: 60, totalPages: 3 },
+        },
+        isLoading: false,
+      }),
+    );
+
+    render(<RecommendationsPage />);
+
+    const paginationButtons = document.querySelectorAll(
+      'button[data-size="sm"]',
+    );
+    const prevButton = paginationButtons[0] as HTMLButtonElement;
+    const nextButton = paginationButtons[1] as HTMLButtonElement;
+
+    expect(prevButton).toBeDisabled();
+    fireEvent.click(nextButton);
+
+    const lastCall = mockUseRecommendations.mock.calls.at(-1);
+    expect(lastCall).toEqual([
+      2,
+      20,
+      undefined,
+      undefined,
+      "RECOMMENDED_NAME_ASC",
+    ]);
+  });
+
+  it("updates sort and date filters, resets page, and clears filters", () => {
+    mockUseRecommendations.mockReturnValue(
+      toResult({
+        data: {
+          items: sampleItems,
+          pagination: { page: 1, limit: 20, total: 40, totalPages: 2 },
+        },
+        isLoading: false,
+      }),
+    );
+
+    render(<RecommendationsPage />);
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "CREATED_DESC" },
+    });
+    expect(mockUseRecommendations.mock.calls.at(-1)).toEqual([
+      1,
+      20,
+      undefined,
+      undefined,
+      "CREATED_DESC",
+    ]);
+
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: "2026-01-01" } });
+    fireEvent.change(dateInputs[1], { target: { value: "2026-01-31" } });
+
+    expect(mockUseRecommendations.mock.calls.at(-1)).toEqual([
+      1,
+      20,
+      "2026-01-01",
+      "2026-01-31",
+      "CREATED_DESC",
+    ]);
+
+    fireEvent.click(screen.getByText("초기화"));
+
+    expect(mockUseRecommendations.mock.calls.at(-1)).toEqual([
+      1,
+      20,
+      undefined,
+      undefined,
+      "CREATED_DESC",
+    ]);
+  });
+
   it("calls export function on CSV button click", () => {
     render(<RecommendationsPage />);
     fireEvent.click(screen.getByText("CSV 내보내기"));
     expect(mockExportFn).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  it("passes selected date range to export", () => {
+    render(<RecommendationsPage />);
+
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0], { target: { value: "2026-02-01" } });
+    fireEvent.change(dateInputs[1], { target: { value: "2026-02-15" } });
+
+    fireEvent.click(screen.getByText("CSV 내보내기"));
+    expect(mockExportFn).toHaveBeenCalledWith("2026-02-01", "2026-02-15");
   });
 
   it("shows reset button when date filter is set", () => {

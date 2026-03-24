@@ -15,7 +15,7 @@
 - `PULL_REQUEST_TEMPLATE.md` — PR template contract.
 - `release-drafter.yml` — release notes drafting rules.
 - `ISSUE_TEMPLATE/` — 5 issue form files (`bug_report.yml`, `config.yml`, `feature_request.yml`, `issue-form.yml`, `task.yml`).
-- `workflows/` — workflow directory (26 files including local `AGENTS.md`).
+- `workflows/` — workflow directory (34 files including local `AGENTS.md`).
 
 ## CONVENTIONS
 

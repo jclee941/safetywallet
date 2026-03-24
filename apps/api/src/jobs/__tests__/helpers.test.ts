@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSyncFailureEventId,
+  chunkArray,
+  deleteFromOptionalTableByAge,
   emitSyncFailureToElk,
+  ensureSiteMemberships,
+  findExistingColumn,
   formatSettleMonth,
   getElkDailyIndexDate,
   getKSTDate,
   getMonthRange,
+  getOrCreateSystemUser,
+  persistSyncFailure,
+  tableExists,
+  VOTE_REWARD_POINT_CODES,
+  VOTE_REWARD_POINTS,
   withRetry,
 } from "../helpers";
 import type { Env } from "../../types";
@@ -298,6 +307,439 @@ describe("scheduled helpers", () => {
       );
 
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("throws when ELK responds non-ok after retries", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("boom", { status: 500 }),
+      );
+
+      await expect(
+        emitSyncFailureToElk(
+          { ELASTICSEARCH_URL: "https://elastic.example" } as Env,
+          {
+            timestamp: "2026-02-20T02:03:04.567Z",
+            correlationId: "corr-123",
+            syncType: "FAS_WORKER",
+            errorCode: "FULL_SYNC_FAILED",
+            errorMessage: "boom",
+            lockName: "fas-full",
+          },
+        ),
+      ).rejects.toThrow("ELK ingest failed with status 500");
+    });
+  });
+
+  describe("array/constants helpers", () => {
+    it("chunks arrays by given size", () => {
+      expect(chunkArray([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+      expect(chunkArray([], 2)).toEqual([]);
+    });
+
+    it("exports vote reward constants", () => {
+      expect(VOTE_REWARD_POINTS).toEqual([50, 30, 20]);
+      expect(VOTE_REWARD_POINT_CODES).toEqual([
+        "VOTE_REWARD_RANK_1",
+        "VOTE_REWARD_RANK_2",
+        "VOTE_REWARD_RANK_3",
+      ]);
+    });
+  });
+
+  describe("optional table helpers", () => {
+    it("tableExists returns true/false based on sqlite_master", async () => {
+      const envTrue = {
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn(() => ({ first: vi.fn(async () => ({ name: "x" })) })),
+          })),
+        },
+      } as unknown as Env;
+      const envFalse = {
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn(() => ({ first: vi.fn(async () => null) })),
+          })),
+        },
+      } as unknown as Env;
+
+      await expect(tableExists(envTrue, "notifications")).resolves.toBe(true);
+      await expect(tableExists(envFalse, "notifications")).resolves.toBe(false);
+    });
+
+    it("findExistingColumn returns first matching candidate", async () => {
+      const env = {
+        DB: {
+          prepare: vi.fn(() => ({
+            all: vi.fn(async () => ({
+              results: [{ name: "createdAt" }, { name: "sent_at" }],
+            })),
+          })),
+        },
+      } as unknown as Env;
+
+      await expect(
+        findExistingColumn(env, "notifications", ["missing", "sent_at"]),
+      ).resolves.toBe("sent_at");
+      await expect(
+        findExistingColumn(env, "notifications", ["missing"]),
+      ).resolves.toBeNull();
+    });
+
+    it("deleteFromOptionalTableByAge handles missing table/column and delete", async () => {
+      const envNoTable = {
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn(() => ({ first: vi.fn(async () => null) })),
+          })),
+        },
+      } as unknown as Env;
+
+      await expect(
+        deleteFromOptionalTableByAge(
+          envNoTable,
+          "notifications",
+          ["created_at"],
+          new Date(),
+        ),
+      ).resolves.toBe(0);
+
+      const envNoColumn = {
+        DB: {
+          prepare: vi
+            .fn()
+            .mockReturnValueOnce({
+              bind: vi.fn(() => ({
+                first: vi.fn(async () => ({ name: "ok" })),
+              })),
+            })
+            .mockReturnValueOnce({
+              all: vi.fn(async () => ({ results: [{ name: "other" }] })),
+            }),
+        },
+      } as unknown as Env;
+
+      await expect(
+        deleteFromOptionalTableByAge(
+          envNoColumn,
+          "notifications",
+          ["created_at"],
+          new Date(),
+        ),
+      ).resolves.toBe(0);
+
+      const envDelete = {
+        DB: {
+          prepare: vi
+            .fn()
+            .mockReturnValueOnce({
+              bind: vi.fn(() => ({
+                first: vi.fn(async () => ({ name: "ok" })),
+              })),
+            })
+            .mockReturnValueOnce({
+              all: vi.fn(async () => ({ results: [{ name: "created_at" }] })),
+            })
+            .mockReturnValueOnce({
+              bind: vi.fn(() => ({
+                run: vi.fn(async () => ({ meta: { changes: 7 } })),
+              })),
+            }),
+        },
+      } as unknown as Env;
+
+      await expect(
+        deleteFromOptionalTableByAge(
+          envDelete,
+          "notifications",
+          ["created_at"],
+          new Date("2026-03-20T00:00:00Z"),
+        ),
+      ).resolves.toBe(7);
+    });
+
+    it("deleteFromOptionalTableByAge returns 0 when result.meta is undefined", async () => {
+      const env = {
+        DB: {
+          prepare: vi
+            .fn()
+            .mockReturnValueOnce({
+              bind: vi.fn(() => ({
+                first: vi.fn(async () => ({ name: "ok" })),
+              })),
+            })
+            .mockReturnValueOnce({
+              all: vi.fn(async () => ({ results: [{ name: "created_at" }] })),
+            })
+            .mockReturnValueOnce({
+              bind: vi.fn(() => ({
+                run: vi.fn(async () => ({})),
+              })),
+            }),
+        },
+      } as unknown as Env;
+
+      await expect(
+        deleteFromOptionalTableByAge(
+          env,
+          "notifications",
+          ["created_at"],
+          new Date("2026-03-20T00:00:00Z"),
+        ),
+      ).resolves.toBe(0);
+    });
+  });
+
+  describe("persistSyncFailure + db membership helpers", () => {
+    it("persistSyncFailure writes ELK/KV/syncErrors and tolerates failures", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 201 }));
+      const kvPut = vi.fn(async () => undefined);
+      const env = {
+        ELASTICSEARCH_URL: "https://elastic.example",
+        KV: { put: kvPut },
+        DB: {},
+      } as unknown as Env;
+
+      await persistSyncFailure(env, {
+        syncType: "FAS_WORKER",
+        errorCode: "FULL_SYNC_FAILED",
+        errorMessage: "boom",
+        lockName: "fas-full",
+        setFasDownStatus: true,
+      });
+
+      expect(fetchSpy).toHaveBeenCalled();
+      expect(kvPut).toHaveBeenCalledWith("fas-status", "down", {
+        expirationTtl: 600,
+      });
+    });
+
+    it("persistSyncFailure skips KV.put when setFasDownStatus is false", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 201 }));
+      const kvPut = vi.fn(async () => undefined);
+      const env = {
+        ELASTICSEARCH_URL: "https://elastic.example",
+        KV: { put: kvPut },
+        DB: {},
+      } as unknown as Env;
+
+      await persistSyncFailure(env, {
+        syncType: "FAS_WORKER",
+        errorCode: "FULL_SYNC_FAILED",
+        errorMessage: "boom",
+        lockName: "fas-full",
+        setFasDownStatus: false,
+      });
+
+      expect(fetchSpy).toHaveBeenCalled();
+      expect(kvPut).not.toHaveBeenCalled();
+    });
+
+    it("persistSyncFailure handles ELK and KV failures without throwing", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("elk down"));
+      const kvPut = vi.fn(async () => {
+        throw new Error("kv down");
+      });
+      const env = {
+        ELASTICSEARCH_URL: "https://elastic.example",
+        KV: { put: kvPut },
+        DB: {},
+      } as unknown as Env;
+
+      await expect(
+        persistSyncFailure(env, {
+          syncType: "FAS_WORKER",
+          errorCode: "FULL_SYNC_FAILED",
+          errorMessage: "boom",
+          lockName: "fas-full",
+          setFasDownStatus: true,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("persistSyncFailure handles non-Error ELK failure", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue("elk-string-error");
+      const env = {
+        ELASTICSEARCH_URL: "https://elastic.example",
+        KV: { put: vi.fn(async () => undefined) },
+        DB: {},
+      } as unknown as Env;
+
+      await expect(
+        persistSyncFailure(env, {
+          syncType: "FAS_WORKER",
+          errorCode: "SYNC_FAIL",
+          errorMessage: "boom",
+          lockName: "fas",
+          setFasDownStatus: false,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("persistSyncFailure handles non-Error KV put failure", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(null, { status: 201 }),
+      );
+      const kvPut = vi.fn(async () => {
+        throw "kv-string-error";
+      });
+      const env = {
+        ELASTICSEARCH_URL: "https://elastic.example",
+        KV: { put: kvPut },
+        DB: {},
+      } as unknown as Env;
+
+      await expect(
+        persistSyncFailure(env, {
+          syncType: "FAS_WORKER",
+          errorCode: "SYNC_FAIL",
+          errorMessage: "boom",
+          lockName: "fas",
+          setFasDownStatus: true,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("findExistingColumn handles non-array results", async () => {
+      const env = {
+        DB: {
+          prepare: vi.fn(() => ({
+            all: vi.fn(async () => ({ results: undefined })),
+          })),
+        },
+      } as unknown as Env;
+
+      await expect(
+        findExistingColumn(env, "notifications", ["col_a"]),
+      ).resolves.toBeNull();
+    });
+
+    it("getOrCreateSystemUser returns existing user or creates one", async () => {
+      const dbExisting = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              get: vi.fn(async () => ({ id: "system-1" })),
+            })),
+          })),
+        })),
+      } as never;
+      await expect(getOrCreateSystemUser(dbExisting)).resolves.toBe("system-1");
+
+      const inserted: unknown[] = [];
+      const dbCreate = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({ get: vi.fn(async () => null) })),
+          })),
+        })),
+        insert: vi.fn(() => ({
+          values: vi.fn((v: unknown) => {
+            inserted.push(v);
+            return Promise.resolve();
+          }),
+        })),
+      } as never;
+
+      const createdId = await getOrCreateSystemUser(dbCreate);
+      expect(createdId).toBeTypeOf("string");
+      expect(inserted).toHaveLength(1);
+    });
+
+    it("ensureSiteMemberships handles empty input and inserts missing memberships", async () => {
+      const dbEmpty = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({ all: vi.fn(async () => []) })),
+          })),
+        })),
+      } as never;
+      await expect(ensureSiteMemberships(dbEmpty, [])).resolves.toBe(0);
+
+      const existingCalls: string[][] = [];
+      const insertChunks: unknown[] = [];
+      const db = {
+        select: vi
+          .fn()
+          .mockImplementationOnce(() => ({
+            from: vi.fn(() => ({
+              where: vi.fn(() => ({
+                all: vi.fn(async () => [{ id: "site-1" }]),
+              })),
+            })),
+          }))
+          .mockImplementation(() => ({
+            from: vi.fn(() => ({
+              where: vi.fn((...args: unknown[]) => {
+                void args;
+                return {
+                  all: vi.fn(async () => {
+                    existingCalls.push(["called"]);
+                    return [{ userId: "u1" }];
+                  }),
+                };
+              }),
+            })),
+          })),
+        insert: vi.fn(() => ({
+          values: vi.fn((v: unknown) => {
+            insertChunks.push(v);
+            return {
+              onConflictDoNothing: vi.fn(async () => undefined),
+            };
+          }),
+        })),
+      } as never;
+
+      const created = await ensureSiteMemberships(db, ["u1", "u2", "u2"]);
+      expect(existingCalls.length).toBeGreaterThan(0);
+      expect(created).toBe(1);
+      expect(insertChunks).toHaveLength(1);
+    });
+
+    it("ensureSiteMemberships returns 0 when no active sites exist", async () => {
+      const db = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              all: vi.fn(async () => []),
+            })),
+          })),
+        })),
+      } as never;
+
+      await expect(ensureSiteMemberships(db, ["u1", "u2"])).resolves.toBe(0);
+    });
+
+    it("ensureSiteMemberships returns 0 when all users are already members", async () => {
+      const insertFn = vi.fn();
+      const db = {
+        select: vi
+          .fn()
+          .mockImplementationOnce(() => ({
+            from: vi.fn(() => ({
+              where: vi.fn(() => ({
+                all: vi.fn(async () => [{ id: "site-1" }]),
+              })),
+            })),
+          }))
+          .mockImplementation(() => ({
+            from: vi.fn(() => ({
+              where: vi.fn(() => ({
+                all: vi.fn(async () => [{ userId: "u1" }, { userId: "u2" }]),
+              })),
+            })),
+          })),
+        insert: insertFn,
+      } as never;
+
+      const created = await ensureSiteMemberships(db, ["u1", "u2"]);
+      expect(created).toBe(0);
+      expect(insertFn).not.toHaveBeenCalled();
     });
   });
 });

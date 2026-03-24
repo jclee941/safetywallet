@@ -20,7 +20,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 │   │   ├── src/durable-objects/ # RateLimiter, JobScheduler DOs
 │   │   ├── src/jobs/        # 10 scheduled cron jobs
 │   │   ├── src/validators/  # Zod request schemas
-│   │   └── migrations/      # 29 D1 SQL migrations
+│   │   └── migrations/      # 31 D1 SQL migrations
 │   ├── admin/               # Next.js 15 admin dashboard (port 3001, static export)
 │   │   └── src/app/         # App Router: attendance, posts, votes, education
 │   └── worker/              # Next.js 15 worker PWA (port 3000, static export)

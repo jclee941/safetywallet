@@ -17,6 +17,7 @@
   - `page.test.tsx`
   - `not-found.test.tsx`
   - `AGENTS.md`
+- Test directory: `__tests__/` (`1` file): `error-boundaries.test.tsx`.
 - Top-level route directories (`19`):
   - `actions`, `announcements`, `approvals`, `attendance`, `audit`
   - `ai-insights`, `dashboard`, `education`, `issues`, `login`, `members`

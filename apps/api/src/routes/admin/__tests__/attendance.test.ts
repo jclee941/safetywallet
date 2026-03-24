@@ -211,6 +211,24 @@ describe("admin/attendance", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 400 for invalid query params", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance-logs?siteId=site-1&limit=0",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 503 when hyperdrive binding is missing", async () => {
+      const { app, env } = await createApp(makeAuth());
+      delete env.FAS_HYPERDRIVE;
+
+      const res = await app.request("/attendance-logs?siteId=site-1", {}, env);
+      expect(res.status).toBe(503);
+    });
+
     it("returns 403 for WORKER role", async () => {
       selectCallCount = 0;
       mockDb.select.mockImplementation(() => {
@@ -247,6 +265,17 @@ describe("admin/attendance", () => {
         0,
         DEFAULT_FAS_SOURCE,
       );
+    });
+
+    it("returns 400 for unsupported date format", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance-logs?siteId=site-1&date=2026/02/20",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(400);
     });
 
     it("falls back to daily attendance query when attendance list fails", async () => {
@@ -288,6 +317,95 @@ describe("admin/attendance", () => {
         "10",
         DEFAULT_FAS_SOURCE,
       );
+    });
+
+    it("returns empty result immediately for FAIL filter", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance-logs?siteId=site-1&result=FAIL&limit=20&page=2",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          logs: unknown[];
+          pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+          };
+        };
+      };
+      expect(body.data.logs).toHaveLength(0);
+      expect(body.data.pagination).toEqual({
+        page: 2,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+      });
+      expect(mockFasGetAttendanceList).not.toHaveBeenCalled();
+    });
+
+    it("uses source row name when linked user is missing", async () => {
+      thenableResults = [[]];
+      mockFasGetAttendanceList.mockResolvedValueOnce({
+        total: 1,
+        records: [
+          {
+            emplCd: "EXT-404",
+            name: "원본 이름",
+            partCd: "P001",
+            companyName: "제일건설",
+            inTime: "0830",
+            outTime: "1730",
+            accsDay: "20260220",
+          },
+        ],
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/attendance-logs?siteId=site-1", {}, env);
+      expect(res.status).toBe(200);
+
+      const body = (await res.json()) as {
+        data: { logs: Array<{ userName: string | null }> };
+      };
+      expect(body.data.logs[0]?.userName).toBe("원본 이름");
+    });
+
+    it("ignores linked users with null externalWorkerId in attendance logs", async () => {
+      thenableResults = [
+        [{ id: "user-1", externalWorkerId: null, nameMasked: "Kim**" }],
+      ];
+      mockFasGetAttendanceList.mockResolvedValueOnce({
+        total: 1,
+        records: [
+          {
+            emplCd: "EXT-404",
+            name: "연결 없음",
+            partCd: "P001",
+            companyName: "제일건설",
+            inTime: "0830",
+            outTime: "1730",
+            accsDay: "20260220",
+          },
+        ],
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request("/attendance-logs?siteId=site-1", {}, env);
+      expect(res.status).toBe(200);
+
+      const body = (await res.json()) as {
+        data: {
+          logs: Array<{ userName: string | null; userId: string | null }>;
+        };
+      };
+      expect(body.data.logs[0]?.userName).toBe("연결 없음");
+      expect(body.data.logs[0]?.userId).toBeNull();
     });
   });
 
@@ -348,6 +466,27 @@ describe("admin/attendance", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 503 for unmatched route when hyperdrive is missing", async () => {
+      const { app, env } = await createApp(makeAuth());
+      delete env.FAS_HYPERDRIVE;
+      const res = await app.request(
+        "/attendance/unmatched?siteId=site-1",
+        {},
+        env,
+      );
+      expect(res.status).toBe(503);
+    });
+
+    it("returns 400 for unmatched route invalid date format", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance/unmatched?siteId=site-1&date=2026/02/20",
+        {},
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("falls back to daily attendance when list query fails", async () => {
       thenableResults = [[{ externalWorkerId: "EXT-001" }]];
       mockFasGetAttendanceList.mockRejectedValueOnce(new Error("sql fail"));
@@ -393,6 +532,63 @@ describe("admin/attendance", () => {
         "10",
         DEFAULT_FAS_SOURCE,
       );
+    });
+
+    it("returns empty unmatched result when no source rows exist", async () => {
+      thenableResults = [];
+      mockFasGetAttendanceList.mockResolvedValueOnce({
+        total: 0,
+        records: [],
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance/unmatched?siteId=site-1",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { records: unknown[]; pagination: { total: number } };
+      };
+      expect(body.data.records).toHaveLength(0);
+      expect(body.data.pagination.total).toBe(0);
+    });
+
+    it("ignores null externalWorkerId rows when building unmatched linked set", async () => {
+      thenableResults = [[{ externalWorkerId: null }]];
+      mockFasGetAttendanceList.mockResolvedValueOnce({
+        total: 1,
+        records: [
+          {
+            emplCd: "EXT-777",
+            name: "미매칭 사용자",
+            partCd: "P001",
+            companyName: "제일건설",
+            inTime: "0830",
+            outTime: "1730",
+            accsDay: "20260220",
+          },
+        ],
+      });
+
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/attendance/unmatched?siteId=site-1",
+        {},
+        env,
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          records: Array<{ externalWorkerId: string }>;
+          pagination: { total: number };
+        };
+      };
+      expect(body.data.pagination.total).toBe(1);
+      expect(body.data.records[0]?.externalWorkerId).toBe("EXT-777");
     });
   });
 });

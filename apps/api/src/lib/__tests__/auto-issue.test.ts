@@ -104,6 +104,24 @@ describe("createErrorIssue", () => {
     expect(body.body).toContain("routes.ts:10");
   });
 
+  it("uses fallback stack text when stack is missing", async () => {
+    const err = new Error("No stack case");
+    Object.defineProperty(err, "stack", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    const mockResponse = { ok: true, json: async () => ({ number: 7 }) };
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await createErrorIssue(makeOpts({ error: err }));
+
+    const body = JSON.parse(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+    );
+    expect(body.body).toContain("(no stack)");
+  });
+
   it("different endpoints produce different fingerprints", async () => {
     const mockResponse = { ok: true, json: async () => ({ number: 1 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);

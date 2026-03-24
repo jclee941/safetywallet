@@ -19,20 +19,29 @@ interface AuthContext {
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 vi.mock("../../middleware/auth", () => ({
-  authMiddleware: vi.fn(async (c: any, next: () => Promise<void>) => {
-    c.set("auth", {
-      user: {
-        id: "admin-1",
-        phone: "01012345678",
-        role: "SUPER_ADMIN",
-        name: "Admin",
-        nameMasked: "Ad***",
+  authMiddleware: vi.fn(
+    async (
+      c: {
+        get: (key: string) => unknown;
+        json: (body: unknown, status?: number) => Response;
       },
-      loginDate: "2026-01-01",
-    });
-    await next();
-  }),
+      next: () => Promise<void>,
+    ) => {
+      if (!c.get("auth")) {
+        return c.json(
+          {
+            success: false,
+            error: { code: "UNAUTHORIZED", message: "Unauthorized" },
+          },
+          401,
+        );
+      }
+      return next();
+    },
+  ),
 }));
+
+vi.mock("../../lib/auth.ts", () => ({}));
 
 vi.mock("../../lib/audit", () => ({
   logAuditWithContext: vi.fn(),
@@ -164,9 +173,15 @@ vi.mock("../../db/schema", () => ({
 }));
 
 // ── App Setup ──────────────────────────────────────────────────────────
-async function createApp() {
+async function createApp(auth?: AuthContext) {
   const { default: fasRoute } = await import("../fas");
   const app = new Hono<AppEnv>();
+  app.use("*", async (c, next) => {
+    if (auth) {
+      c.set("auth", auth);
+    }
+    await next();
+  });
   app.route("/fas", fasRoute);
   const env = {
     DB: {},
@@ -174,6 +189,19 @@ async function createApp() {
     ENCRYPTION_KEY: "test-encryption-key",
   };
   return { app, env };
+}
+
+function makeAuth(role = "SUPER_ADMIN", id = "admin-1"): AuthContext {
+  return {
+    user: {
+      id,
+      phone: "01012345678",
+      role,
+      name: "Admin",
+      nameMasked: "Ad***",
+    },
+    loginDate: "2026-01-01",
+  };
 }
 
 describe("routes/fas", () => {
@@ -190,7 +218,7 @@ describe("routes/fas", () => {
       // Batch lookup via inArray → no existing users
       mockAllQueue.push([]);
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -226,7 +254,7 @@ describe("routes/fas", () => {
       // Batch lookup → existing user found
       mockAllQueue.push([{ id: "user-1", externalWorkerId: "EXT-001" }]);
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -256,7 +284,7 @@ describe("routes/fas", () => {
     });
 
     it("handles workers with missing required fields", async () => {
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -294,7 +322,7 @@ describe("routes/fas", () => {
       mockAllQueue.push([{ id: "user-2", externalWorkerId: "EXT-002" }]);
       // Third worker: missing fields → fail (no DB query)
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -346,7 +374,7 @@ describe("routes/fas", () => {
         errors: [{ chunkIndex: 0, error: "DB insert failed" }],
       });
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -384,7 +412,7 @@ describe("routes/fas", () => {
     });
 
     it("handles worker with 'unknown' externalWorkerId when missing", async () => {
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -418,7 +446,7 @@ describe("routes/fas", () => {
 
     it("sets optional companyName/tradeType to null when not provided", async () => {
       mockAllQueue.push([]); // no existing user (batch lookup)
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/sync",
         {
@@ -446,6 +474,62 @@ describe("routes/fas", () => {
       };
       expect(body.data.created).toBe(1);
     });
+
+    it("returns 401 when auth is missing", async () => {
+      const { app, env } = await createApp();
+      const res = await app.request(
+        "/fas/workers/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteId: "site-1", workers: [] }),
+        },
+        env,
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 for worker role", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER", "worker-1"));
+      const res = await app.request(
+        "/fas/workers/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteId: "site-1", workers: [] }),
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 400 for invalid JSON payload", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/fas/workers/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{",
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when workers array is missing", async () => {
+      const { app, env } = await createApp(makeAuth());
+      const res = await app.request(
+        "/fas/workers/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteId: "site-1" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── DELETE /fas/workers/:externalWorkerId ─────────────────────────────
@@ -453,7 +537,7 @@ describe("routes/fas", () => {
     it("deletes an existing worker", async () => {
       mockGetQueue.push({ id: "user-1", externalWorkerId: "EXT-001" });
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/EXT-001",
         { method: "DELETE" },
@@ -468,7 +552,7 @@ describe("routes/fas", () => {
     it("returns deleted=false when worker not found", async () => {
       mockGetQueue.push(undefined); // user not found
 
-      const { app, env } = await createApp();
+      const { app, env } = await createApp(makeAuth());
       const res = await app.request(
         "/fas/workers/NONEXISTENT",
         { method: "DELETE" },
@@ -481,6 +565,47 @@ describe("routes/fas", () => {
       };
       expect(body.data.deleted).toBe(false);
       expect(body.data.reason).toBe("User not found");
+    });
+
+    it("returns 403 for non-admin delete", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER", "worker-1"));
+      const res = await app.request(
+        "/fas/workers/EXT-001",
+        { method: "DELETE" },
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("GET /fas/employees", () => {
+    it("returns 200 for admin role", async () => {
+      mockAllQueue.push([
+        {
+          id: "u1",
+          name: "Kim",
+          nameMasked: "K**",
+          externalWorkerId: "EXT-1",
+        },
+      ]);
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/fas/employees", {}, env);
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 403 for worker role", async () => {
+      const { app, env } = await createApp(makeAuth("WORKER", "worker-1"));
+      const res = await app.request("/fas/employees", {}, env);
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 500 when employee query throws", async () => {
+      mockDb.select.mockImplementationOnce(() => {
+        throw new Error("db failure");
+      });
+      const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
+      const res = await app.request("/fas/employees", {}, env);
+      expect(res.status).toBe(500);
     });
   });
 });

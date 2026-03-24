@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -17,7 +16,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Plus, Check } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 
@@ -44,7 +43,7 @@ export default function AddCandidatePage() {
   const siteId = useAuthStore((s) => s.currentSiteId);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<UsersResponse>({
+  const { data } = useQuery<UsersResponse>({
     queryKey: ["users"],
     queryFn: () => apiFetch<UsersResponse>(`/admin/users?limit=50`),
   });
