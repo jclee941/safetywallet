@@ -2,7 +2,7 @@
 
 > Version: v1.0  
 > Date: 2026-02-20  
-> Scope: `apps/api-worker` logging path (`logger`, `request-logger`, `scheduled`)
+> Scope: `apps/api` logging path (`logger`, `request-logger`, `scheduled`)
 
 ---
 
@@ -121,18 +121,18 @@ Given `ELASTICSEARCH_INDEX_PREFIX=safetywallet-logs`,
 
 ## 8. Implementation Mapping
 
-- `apps/api-worker/src/lib/logger.ts`
+- `apps/api/src/lib/logger.ts`
   - add optional `elasticsearchIndexPrefix` in `LoggerOptions`
   - apply fallback to `safewallet-logs`
-- `apps/api-worker/src/middleware/request-logger.ts`
+- `apps/api/src/middleware/request-logger.ts`
   - pass `c.env.ELASTICSEARCH_INDEX_PREFIX` to logger
-- `apps/api-worker/src/index.ts`
+- `apps/api/src/index.ts`
   - pass `c.env.ELASTICSEARCH_INDEX_PREFIX` in `onError` logger
 - `apps/api/src/jobs/registry.ts`
   - apply prefix override for scheduled ELK endpoint
-- `apps/api-worker/src/types.ts`
+- `apps/api/src/types.ts`
   - add `ELASTICSEARCH_INDEX_PREFIX?: string`
-- `apps/api-worker/wrangler.toml`
+- `apps/api/wrangler.toml`
   - define `ELASTICSEARCH_INDEX_PREFIX` for production/dev vars
 
 ---

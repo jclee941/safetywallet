@@ -48,7 +48,7 @@ Naming policy:
 - Runtime worker identity and hosts use `safewallet` / `safewallet-dev` only.
   `safetywallet-*` resource names are legacy infrastructure identifiers and stay unchanged in this phase.
 
-The authoritative runtime binding config is `apps/api-worker/wrangler.toml`.
+The authoritative runtime binding config is `apps/api/wrangler.toml`.
 
 ## Deploy
 
@@ -87,10 +87,10 @@ Run development migration first, then production.
 
 ```bash
 # Development
-npm --prefix apps/api-worker run db:migrate
+npm --prefix apps/api run db:migrate
 
 # Production
-npm --prefix apps/api-worker run db:migrate:prod
+npm --prefix apps/api run db:migrate:prod
 ```
 
 Always snapshot before risky schema changes.
@@ -104,7 +104,7 @@ npx wrangler d1 export safetywallet-db --output=backup-$(date +%Y%m%d).sql
 ### Worker
 
 ```bash
-npx wrangler rollback --config apps/api-worker/wrangler.toml
+npx wrangler rollback --config apps/api/wrangler.toml
 ```
 
 ### Admin/Worker App (Removed)
@@ -117,7 +117,7 @@ Rollback path is worker only.
 If backup exists:
 
 ```bash
-npx wrangler d1 execute safetywallet-db --file=backup.sql --config apps/api-worker/wrangler.toml
+npx wrangler d1 execute safetywallet-db --file=backup.sql --config apps/api/wrangler.toml
 ```
 
 If no backup exists, use Cloudflare point-in-time recovery options for the configured database.

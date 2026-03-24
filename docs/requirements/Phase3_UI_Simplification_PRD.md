@@ -38,7 +38,7 @@
 
 ### 2.2 현행 분석 결과
 
-**Worker App 제보 작성 폼** (`apps/worker-app/src/app/posts/new/page.tsx`):
+**Worker App 제보 작성 폼** (`apps/worker/src/app/posts/new/page.tsx`):
 
 현재 제보 작성 폼에는 카테고리별 "상세" 입력 필드가 **존재하지 않음**. 전 카테고리 공통으로 아래 필드만 사용:
 
@@ -88,13 +88,13 @@
 
 **우수근로자 추천 기능이 이미 존재함** (`/votes` 경로):
 
-| 구성 요소          | 파일                                            | 상태          |
-| ------------------ | ----------------------------------------------- | ------------- |
-| **Worker App UI**  | `apps/worker-app/src/app/votes/page.tsx`        | **구현 완료** |
-| **API 엔드포인트** | `apps/api-worker/src/routes/recommendations.ts` | **구현 완료** |
-| **DB 테이블**      | `recommendations` (schema.ts:692-723)           | **구현 완료** |
-| **API 훅**         | `apps/worker-app/src/hooks/use-api.ts:436-477`  | **구현 완료** |
-| **Admin 관리**     | `apps/admin-app/src/app/votes/` (4파일)         | **구현 완료** |
+| 구성 요소          | 파일                                       | 상태          |
+| ------------------ | ------------------------------------------ | ------------- |
+| **Worker App UI**  | `apps/worker/src/app/votes/page.tsx`       | **구현 완료** |
+| **API 엔드포인트** | `apps/api/src/routes/recommendations.ts`   | **구현 완료** |
+| **DB 테이블**      | `recommendations` (schema.ts:692-723)      | **구현 완료** |
+| **API 훅**         | `apps/worker/src/hooks/use-api.ts:436-477` | **구현 완료** |
+| **Admin 관리**     | `apps/admin/src/app/votes/` (4파일)        | **구현 완료** |
 
 **현재 구현된 입력 필드**:
 
@@ -176,9 +176,9 @@ schema.ts:713-717 → unique().on(siteId, recommenderId, recommendationDate)
 
 ### Part 1 변경 사항
 
-| #   | 변경 내용                                              | 대상 파일                                    | 변경 유형        |
-| --- | ------------------------------------------------------ | -------------------------------------------- | ---------------- |
-| 1-1 | INCONVENIENCE 카테고리 선택 시 위치 필드(층/구역) 숨김 | `apps/worker-app/src/app/posts/new/page.tsx` | UI 조건부 렌더링 |
+| #   | 변경 내용                                              | 대상 파일                                | 변경 유형        |
+| --- | ------------------------------------------------------ | ---------------------------------------- | ---------------- |
+| 1-1 | INCONVENIENCE 카테고리 선택 시 위치 필드(층/구역) 숨김 | `apps/worker/src/app/posts/new/page.tsx` | UI 조건부 렌더링 |
 
 ### Part 2 변경 사항
 
@@ -225,19 +225,19 @@ schema.ts:713-717 → unique().on(siteId, recommenderId, recommendationDate)
 
 ### 변경 파일 목록 (최소)
 
-| 파일                                         | 변경 내용                       | 위험도 |
-| -------------------------------------------- | ------------------------------- | ------ |
-| `apps/worker-app/src/app/posts/new/page.tsx` | INCONVENIENCE 시 위치 필드 숨김 | 낮음   |
+| 파일                                     | 변경 내용                       | 위험도 |
+| ---------------------------------------- | ------------------------------- | ------ |
+| `apps/worker/src/app/posts/new/page.tsx` | INCONVENIENCE 시 위치 필드 숨김 | 낮음   |
 
 ### 변경 불필요 확인 파일
 
-| 파일                                            | 사유                         |
-| ----------------------------------------------- | ---------------------------- |
-| `apps/api-worker/src/routes/recommendations.ts` | 요구사항 이미 충족           |
-| `apps/api-worker/src/middleware/attendance.ts`  | FAS 인증 이미 적용           |
-| `apps/api-worker/src/db/schema.ts`              | 스키마 변경 불필요           |
-| `packages/types/src/enums.ts`                   | enum 변경 불필요 (하위 호환) |
-| `apps/worker-app/src/app/votes/page.tsx`        | 추천 UI 이미 완성            |
+| 파일                                     | 사유                         |
+| ---------------------------------------- | ---------------------------- |
+| `apps/api/src/routes/recommendations.ts` | 요구사항 이미 충족           |
+| `apps/api/src/middleware/attendance.ts`  | FAS 인증 이미 적용           |
+| `apps/api/src/db/schema.ts`              | 스키마 변경 불필요           |
+| `packages/types/src/enums.ts`            | enum 변경 불필요 (하위 호환) |
+| `apps/worker/src/app/votes/page.tsx`     | 추천 UI 이미 완성            |
 
 ---
 
