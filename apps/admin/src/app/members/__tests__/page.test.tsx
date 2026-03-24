@@ -45,8 +45,6 @@ type DataTableProps = {
   emptyMessage?: string;
 };
 
-let latestDataTableProps: DataTableProps | null = null;
-
 const authState = {
   currentSiteId: "site-1" as string | null,
   _hasHydrated: true,
@@ -147,7 +145,6 @@ vi.mock("@safetywallet/ui", () => ({
 
 vi.mock("@/components/data-table", () => ({
   DataTable: (props: DataTableProps) => {
-    latestDataTableProps = props;
     return (
       <div>
         <p>{props.emptyMessage}</p>
@@ -209,7 +206,6 @@ describe("MembersPage (__tests__)", () => {
     toastMock.mockReset();
     setMemberActiveStatusMutateMock.mockReset();
     toggleLoginExemptMutateMock.mockReset();
-    latestDataTableProps = null;
 
     authState.currentSiteId = "site-1";
     authState._hasHydrated = true;

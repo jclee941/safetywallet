@@ -31,7 +31,6 @@ type DataTableProps = {
   emptyMessage?: string;
 };
 
-let latestTableProps: DataTableProps | null = null;
 const selectHandlers: Array<(value: string) => void> = [];
 
 vi.mock("next/navigation", () => ({
@@ -46,7 +45,6 @@ vi.mock("@/hooks/use-api", () => ({
 
 vi.mock("@/components/data-table", () => ({
   DataTable: (props: DataTableProps) => {
-    latestTableProps = props;
     return (
       <div>
         <p>{props.emptyMessage}</p>
@@ -161,7 +159,6 @@ const samplePost: PostRow = {
 describe("PostsPage (__tests__)", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    latestTableProps = null;
     selectHandlers.length = 0;
 
     mockUseAdminPosts.mockReturnValue(
