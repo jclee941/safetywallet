@@ -209,7 +209,7 @@ build:api:
 e2e-smoke:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.51.1-jammy
-  needs: [build:worker, build:admin]
+  needs: [build:types, build:worker, build:admin]
   before_script:
     - npm ci --cache .npm --prefer-offline
   script:
