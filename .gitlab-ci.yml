@@ -237,7 +237,7 @@ d1-migrate:
     url: https://safetywallet.jclee.me
   script:
     - cd apps/api
-    - export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CF_API_TOKEN:-}}}"
+    - export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CLOUDFLARE_API_TOKEN_WORKER:-${CLOUDFLARE_API_TOKEN_ADMIN:-${CLOUDFLARE_API_TOKEN_PURGE:-${CF_API_TOKEN:-}}}}}}"
     - export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
     - test -n "$CLOUDFLARE_API_TOKEN"
     - npx wrangler d1 migrations apply safetywallet-db --remote --env="" --config wrangler.toml
