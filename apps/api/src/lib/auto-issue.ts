@@ -10,7 +10,7 @@
 
 import { GitLabClient } from "./gitlab-client";
 
-const GITLAB_PROJECT_ID = "qws941/safetywallet";
+const GITLAB_PROJECT_ID = "root/safetywallet";
 
 /** KV key prefix for dedup tracking */
 const KV_PREFIX = "auto-issue:";

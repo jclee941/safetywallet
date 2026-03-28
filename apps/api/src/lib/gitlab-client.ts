@@ -5,7 +5,9 @@
  * Provides typed methods for common GitLab operations.
  */
 
-const GITLAB_PROJECT_ID = "qws941/safetywallet";
+// Self-hosted GitLab instance configuration
+const DEFAULT_GITLAB_BASE_URL = "http://192.168.50.215:8929/api/v4";
+const DEFAULT_GITLAB_PROJECT_ID = "root/safetywallet";
 
 interface GitLabIssue {
   iid: number;
@@ -45,10 +47,14 @@ export class GitLabClient {
   private baseUrl: string;
   private projectId: string;
 
-  constructor(token: string, projectId: string = GITLAB_PROJECT_ID) {
+  constructor(
+    token: string,
+    projectId: string = DEFAULT_GITLAB_PROJECT_ID,
+    baseUrl: string = DEFAULT_GITLAB_BASE_URL,
+  ) {
     this.token = token;
     this.projectId = encodeURIComponent(projectId);
-    this.baseUrl = "https://gitlab.com/api/v4";
+    this.baseUrl = baseUrl;
   }
 
   private async request<T>(
@@ -98,7 +104,9 @@ export class GitLabClient {
     if (options.per_page) {
       params.set("per_page", String(options.per_page));
     }
-    params.set("sort", "created_desc");
+    // GitLab uses order_by and sort separately
+    params.set("order_by", "created_at");
+    params.set("sort", "desc");
 
     const queryString = params.toString() ? `?${params.toString()}` : "";
     return this.request<GitLabIssue[]>(

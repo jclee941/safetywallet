@@ -84,7 +84,7 @@ async function createApp(
 
   const env = {
     DB: {},
-    GITHUB_TOKEN: "token",
+    GITLAB_TOKEN: "token",
     KV: {
       get: vi.fn(async () => null),
       put: vi.fn(async () => undefined),
@@ -269,7 +269,7 @@ describe("admin/issues", () => {
       expect(body.data[0].slug).toBe("bug_report");
     });
 
-    it("fetches templates without Authorization header when GITHUB_TOKEN is absent", async () => {
+    it("fetches templates without Authorization header when GITLAB_TOKEN is absent", async () => {
       const yml = btoa(
         [
           "name: Task",
@@ -291,7 +291,7 @@ describe("admin/issues", () => {
         .mockResolvedValueOnce(new Response("", { status: 404 }));
 
       const { app, env } = await createApp(makeAuth(), {
-        GITHUB_TOKEN: "",
+        GITLAB_TOKEN: "",
         KV: {
           get: vi.fn(async () => null),
           put: vi.fn(async () => undefined),
@@ -419,13 +419,13 @@ describe("admin/issues", () => {
       expect(res.status).toBe(403);
     });
 
-    it("returns issues without auth header when GITHUB_TOKEN is absent", async () => {
+    it("returns issues without auth header when GITLAB_TOKEN is absent", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(JSON.stringify([{ id: 1, title: "public issue" }]), {
           status: 200,
         }),
       );
-      const { app, env } = await createApp(makeAuth(), { GITHUB_TOKEN: "" });
+      const { app, env } = await createApp(makeAuth(), { GITLAB_TOKEN: "" });
 
       const res = await app.request("/issues", {}, env);
       expect(res.status).toBe(200);
@@ -488,8 +488,8 @@ describe("admin/issues", () => {
   });
 
   describe("POST /issues", () => {
-    it("returns 503 when GITHUB_TOKEN is missing", async () => {
-      const { app, env } = await createApp(makeAuth(), { GITHUB_TOKEN: "" });
+    it("returns 503 when GITLAB_TOKEN is missing", async () => {
+      const { app, env } = await createApp(makeAuth(), { GITLAB_TOKEN: "" });
       const res = await app.request(
         "/issues",
         {

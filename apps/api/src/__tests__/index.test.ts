@@ -842,7 +842,7 @@ describe("API Index", () => {
 
     it("creates GitHub issue for non-http errors when token exists", async () => {
       mockEnv.ENVIRONMENT = "production";
-      mockEnv.GITHUB_TOKEN = "gh-token";
+      mockEnv.GITLAB_TOKEN = "gh-token";
       mockEnv.R2 = {
         get: vi.fn().mockRejectedValue(new Error("boom-onerror")),
       };

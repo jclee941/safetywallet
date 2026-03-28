@@ -245,6 +245,8 @@ d1-migrate:
 notify:slack:
   stage: notify
   image: alpine/curl:latest
+  before_script:
+    - apk add --no-cache jq
   needs:
     - lint
     - typecheck

@@ -10,7 +10,7 @@ import { GitLabClient } from "../../lib/gitlab-client";
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 const logger = createLogger("admin/issues");
 
-const GITLAB_PROJECT_ID = "qws941/safetywallet";
+const GITLAB_PROJECT_ID = "root/safetywallet";
 
 function toStatusCode(status: number): ContentfulStatusCode {
   if (status >= 400 && status <= 599) {
@@ -237,7 +237,7 @@ app.get("/issues", requireAdmin, async (c) => {
       html_url: issue.web_url,
       user: {
         login: issue.author.username,
-        avatar_url: `https://gitlab.com/uploads/-/system/user/avatar/${issue.author.id}/avatar.png`,
+        avatar_url: `http://192.168.50.215:8929/uploads/-/system/user/avatar/${issue.author.id}/avatar.png`,
       },
     }));
 

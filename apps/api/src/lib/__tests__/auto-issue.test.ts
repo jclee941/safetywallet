@@ -34,7 +34,7 @@ describe("createErrorIssue", () => {
 
     expect(fetch).toHaveBeenCalledOnce();
     const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toContain("/projects/qws941%2Fsafetywallet/issues");
+    expect(url).toContain("/projects/root%2Fsafetywallet/issues");
     expect(init.method).toBe("POST");
 
     const body = JSON.parse(init.body);
