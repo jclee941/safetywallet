@@ -97,3 +97,10 @@ apps/worker/android/app-release-signed.apk
 apps/worker/android/app-release-bundle.aab
 apps/worker/android/app-release-signed.apk.idsig
 apps/worker/android/app-release-unsigned-aligned.apk
+
+
+# Compiled Go binaries
+scripts/deploy-verify
+scripts/ci-debug
+junit.xml
+junit-*.xml

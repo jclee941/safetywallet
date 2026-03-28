@@ -11,6 +11,32 @@
 - `README.md` — docs landing map.
 - `cloudflare-operations.md` — operations runbook source.
 - `FEATURE_CHECKLIST.md` — feature completion checklist.
+- `deployment-verification.md` — deployment verification guide.
+- `ci-cd-debugging.md` — CI/CD troubleshooting guide.
+- `debugging.md` — general debugging guide.
+- `deployment.md` — redirect to operations runbook.
+- `rollback.md` — redirect to operations runbook.
+- `REQUIREMENTS_REVIEW.md` — redirect to requirements checklist.
+- `requirements/` — requirements subtree with local `AGENTS.md`.
+- `archive/` — archived/deprecated documents.
+
+- `AGENTS.md` — local docs governance.
+- `README.md` — docs landing map.
+- `cloudflare-operations.md` — operations runbook source.
+- `FEATURE_CHECKLIST.md` — feature completion checklist.
+- `deployment-verification.md` — deployment verification guide.
+- `ci-cd-debugging.md` — CI/CD troubleshooting guide.
+- `debugging.md` — general debugging guide.
+- `deployment.md` — redirect to operations runbook.
+- `rollback.md` — redirect to operations runbook.
+- `REQUIREMENTS_REVIEW.md` — redirect to requirements checklist.
+- `requirements/` — requirements subtree with local `AGENTS.md`.
+- `archive/` — archived/deprecated documents.
+
+- `AGENTS.md` — local docs governance.
+- `README.md` — docs landing map.
+- `cloudflare-operations.md` — operations runbook source.
+- `FEATURE_CHECKLIST.md` — feature completion checklist.
 - `deployment.md` — redirect to operations runbook.
 - `rollback.md` — redirect to operations runbook.
 - `REQUIREMENTS_REVIEW.md` — redirect to requirements checklist.
@@ -33,7 +59,7 @@
 
 ## DRIFT GUARDS
 
-- Confirm top-level docs directory remains 8 entries.
+- Confirm top-level docs directory remains 12 entries.
 - Confirm `requirements/` subtree delegation still explicit here.
 - Confirm every inventory entry maps to an existing file/dir.
 - Confirm redirects still target active canonical documents.
