@@ -8,6 +8,10 @@ export default defineConfig({
     name: "worker",
     environment: "happy-dom",
     globals: true,
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "../../junit-worker.xml",
+    },
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,

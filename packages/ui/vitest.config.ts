@@ -8,6 +8,10 @@ export default defineConfig({
     name: "ui",
     environment: "happy-dom",
     globals: true,
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "../../junit-ui.xml",
+    },
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,

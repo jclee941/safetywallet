@@ -6,6 +6,10 @@ export default defineConfig({
     name: "api",
     environment: "node",
     globals: true,
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "../../junit-api.xml",
+    },
     include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",

@@ -15,15 +15,3 @@ export default defineConfig({
     ],
   },
 });
-
-export default defineConfig({
-  test: {
-    projects: [
-      "apps/api/vitest.config.ts",
-      "apps/admin/vitest.config.ts",
-      "apps/worker/vitest.config.ts",
-      "packages/ui/vitest.config.ts",
-      "packages/types/vitest.config.ts",
-    ],
-  },
-});

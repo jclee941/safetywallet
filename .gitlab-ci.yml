@@ -114,9 +114,10 @@ unit-test:
     when: always
     reports:
       junit:
-        - junit.xml
+        - junit-*.xml
     paths:
       - coverage/
+      - junit-*.xml
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
@@ -132,7 +133,9 @@ security:
 
 sast:
   stage: test
-  image: zricethezav/gitleaks:latest
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
   script:
     - gitleaks detect --verbose --redact --no-git --source .
   allow_failure: true
@@ -257,7 +260,6 @@ notify:slack:
     - sast
     - e2e-smoke
     - d1-migrate
-  before_script: []
   script:
     - |
       if [ -z "$SLACK_WEBHOOK_URL" ]; then

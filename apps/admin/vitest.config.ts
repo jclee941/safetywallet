@@ -18,6 +18,10 @@ export default defineConfig({
     root: __dirname,
     environment: "happy-dom",
     globals: true,
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "../../junit-admin.xml",
+    },
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,

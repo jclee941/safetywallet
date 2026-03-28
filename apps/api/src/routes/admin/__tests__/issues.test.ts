@@ -118,20 +118,18 @@ describe("admin/issues", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("fetches and parses templates from GitHub when cache is empty", async () => {
+    it("fetches and parses templates from GitLab when cache is empty", async () => {
       const yml = btoa(
         [
+          "<!--",
           "name: Bug report",
           "description: Report a bug",
           "labels:",
           "  - bug",
-          "body:",
-          "  - type: textarea",
-          "    id: details",
-          "    attributes:",
-          "      label: Details",
-          "    validations:",
-          "      required: true",
+          "-->",
+          "",
+          "## Details",
+          "<!-- Explain what happened -->",
         ].join("\n"),
       );
 
@@ -162,11 +160,16 @@ describe("admin/issues", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(3);
     });
 
-    it("returns 502 when upstream fetch throws", async () => {
-      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("network"));
+    it("returns empty templates when one upstream fetch throws", async () => {
+      vi.spyOn(globalThis, "fetch")
+        .mockRejectedValueOnce(new Error("network"))
+        .mockResolvedValueOnce(new Response("", { status: 404 }))
+        .mockResolvedValueOnce(new Response("", { status: 404 }));
       const { app, env } = await createApp(makeAuth());
       const res = await app.request("/issues/templates", {}, env);
-      expect(res.status).toBe(502);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: unknown[] };
+      expect(body.data).toHaveLength(0);
     });
 
     it("continues when KV cache read fails", async () => {
@@ -192,15 +195,13 @@ describe("admin/issues", () => {
     it("defaults labels to empty array when YAML has no labels field", async () => {
       const yml = btoa(
         [
+          "<!--",
           "name: No Labels Template",
           "description: A template without labels",
-          "body:",
-          "  - type: textarea",
-          "    id: info",
-          "    attributes:",
-          "      label: Info",
-          "    validations:",
-          "      required: false",
+          "-->",
+          "",
+          "## Info",
+          "<!-- Provide context -->",
         ].join("\n"),
       );
 
@@ -230,17 +231,15 @@ describe("admin/issues", () => {
     it("continues when KV cache write fails", async () => {
       const yml = btoa(
         [
+          "<!--",
           "name: Bug report",
           "description: Report a bug",
           "labels:",
           "  - bug",
-          "body:",
-          "  - type: textarea",
-          "    id: details",
-          "    attributes:",
-          "      label: Details",
-          "    validations:",
-          "      required: true",
+          "-->",
+          "",
+          "## Details",
+          "<!-- Explain what happened -->",
         ].join("\n"),
       );
 
@@ -269,26 +268,8 @@ describe("admin/issues", () => {
       expect(body.data[0].slug).toBe("bug_report");
     });
 
-    it("fetches templates without Authorization header when GITLAB_TOKEN is absent", async () => {
-      const yml = btoa(
-        [
-          "name: Task",
-          "description: A task",
-          "body:",
-          "  - type: textarea",
-          "    id: info",
-          "    attributes:",
-          "      label: Info",
-        ].join("\n"),
-      );
-
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ content: yml }), { status: 200 }),
-        )
-        .mockResolvedValueOnce(new Response("", { status: 404 }))
-        .mockResolvedValueOnce(new Response("", { status: 404 }));
+    it("returns 503 when GITLAB_TOKEN is absent", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
 
       const { app, env } = await createApp(makeAuth(), {
         GITLAB_TOKEN: "",
@@ -299,14 +280,11 @@ describe("admin/issues", () => {
       });
 
       const res = await app.request("/issues/templates", {}, env);
-      expect(res.status).toBe(200);
-      const callHeaders = fetchSpy.mock.calls[0][1] as {
-        headers: Record<string, string>;
-      };
-      expect(callHeaders.headers.Authorization).toBeUndefined();
+      expect(res.status).toBe(503);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("skips templates when GitHub response has no content field", async () => {
+    it("skips templates when GitLab response has no content field", async () => {
       vi.spyOn(globalThis, "fetch")
         .mockResolvedValueOnce(
           new Response(JSON.stringify({}), { status: 200 }),
@@ -327,16 +305,11 @@ describe("admin/issues", () => {
       expect(body.data).toHaveLength(0);
     });
 
-    it("skips templates when YAML has no name field", async () => {
+    it("skips templates when frontmatter has no name field", async () => {
       const yml = btoa(
-        [
-          "description: no name",
-          "body:",
-          "  - type: textarea",
-          "    id: x",
-          "    attributes:",
-          "      label: X",
-        ].join("\n"),
+        ["<!--", "description: no name", "-->", "", "## X", "<!-- X -->"].join(
+          "\n",
+        ),
       );
 
       vi.spyOn(globalThis, "fetch")
@@ -359,25 +332,16 @@ describe("admin/issues", () => {
       expect(body.data).toHaveLength(0);
     });
 
-    it("skips body entries with unsupported types or missing attributes", async () => {
+    it("extracts markdown sections into template fields", async () => {
       const yml = btoa(
         [
+          "<!--",
           "name: Mixed",
           "description: mixed types",
-          "body:",
-          "  - type: markdown",
-          "    id: md1",
-          "    attributes:",
-          "      label: MD",
-          "  - type: textarea",
-          "    attributes:",
-          "      label: NoId",
-          "  - type: dropdown",
-          "    id: dd1",
-          "  - type: textarea",
-          "    id: valid",
-          "    attributes:",
-          "      label: Valid",
+          "-->",
+          "",
+          "## Valid",
+          "<!-- Valid input -->",
         ].join("\n"),
       );
 
@@ -419,22 +383,13 @@ describe("admin/issues", () => {
       expect(res.status).toBe(403);
     });
 
-    it("returns issues without auth header when GITLAB_TOKEN is absent", async () => {
-      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-        new Response(JSON.stringify([{ id: 1, title: "public issue" }]), {
-          status: 200,
-        }),
-      );
+    it("returns 503 when GITLAB_TOKEN is absent", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
       const { app, env } = await createApp(makeAuth(), { GITLAB_TOKEN: "" });
 
       const res = await app.request("/issues", {}, env);
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: Array<{ id: number }> };
-      expect(body.data).toHaveLength(1);
-      const callHeaders = fetchSpy.mock.calls[0][1] as {
-        headers: Record<string, string>;
-      };
-      expect(callHeaders.headers.Authorization).toBeUndefined();
+      expect(res.status).toBe(503);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it("returns upstream error status and message", async () => {
@@ -444,17 +399,27 @@ describe("admin/issues", () => {
       const { app, env } = await createApp(makeAuth());
 
       const res = await app.request("/issues?state=closed", {}, env);
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(502);
       const body = (await res.json()) as { error: { message: string } };
-      expect(body.error.message).toContain("Not Found");
+      expect(body.error.message).toContain("Failed to reach GitLab API");
     });
 
-    it("filters out pull requests from issue list", async () => {
+    it("transforms GitLab issues to API response shape", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(
           JSON.stringify([
-            { id: 1, title: "Issue one" },
-            { id: 2, title: "PR one", pull_request: { url: "x" } },
+            {
+              iid: 1,
+              title: "Issue one",
+              description: "details",
+              state: "opened",
+              labels: ["bug"],
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              web_url:
+                "http://192.168.50.215:8929/root/safetywallet/-/issues/1",
+              author: { id: 7, username: "admin", name: "Admin" },
+            },
           ]),
           { status: 200 },
         ),
@@ -463,9 +428,12 @@ describe("admin/issues", () => {
 
       const res = await app.request("/issues?labels=bug", {}, env);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data: Array<{ id: number }> };
+      const body = (await res.json()) as {
+        data: Array<{ number: number; labels: Array<{ name: string }> }>;
+      };
       expect(body.data).toHaveLength(1);
-      expect(body.data[0].id).toBe(1);
+      expect(body.data[0].number).toBe(1);
+      expect(body.data[0].labels).toEqual([{ name: "bug" }]);
     });
 
     it("maps non-4xx/5xx upstream status to 502", async () => {
@@ -530,7 +498,7 @@ describe("admin/issues", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns GitHub error when issue creation fails", async () => {
+    it("returns 502 when issue creation fails", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(JSON.stringify({ message: "Validation Failed" }), {
           status: 422,
@@ -546,17 +514,22 @@ describe("admin/issues", () => {
         },
         env,
       );
-      expect(res.status).toBe(422);
+      expect(res.status).toBe(502);
     });
 
     it("creates issue successfully", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            number: 11,
-            node_id: "NODE_1",
+            iid: 11,
             title: "new issue",
-            body: "details",
+            description: "details",
+            state: "opened",
+            labels: [],
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            web_url: "http://192.168.50.215:8929/root/safetywallet/-/issues/11",
+            author: { id: 7, username: "admin", name: "Admin" },
           }),
           { status: 201 },
         ),
@@ -581,19 +554,30 @@ describe("admin/issues", () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
-              number: 12,
-              node_id: "NODE_2",
+              iid: 12,
               title: "codex issue",
-              body: "details",
+              description: "details",
+              state: "opened",
+              labels: ["bug", "codex"],
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              web_url:
+                "http://192.168.50.215:8929/root/safetywallet/-/issues/12",
+              author: { id: 7, username: "admin", name: "Admin" },
             }),
             { status: 201 },
           ),
         )
         .mockResolvedValueOnce(
-          new Response(JSON.stringify({ data: {} }), { status: 200 }),
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ id: 1 }), { status: 201 }),
+          new Response(
+            JSON.stringify({
+              id: 1,
+              body: "@codex codex issue",
+              created_at: "2026-01-01T00:00:00.000Z",
+              author: { id: 7, username: "admin", name: "Admin" },
+            }),
+            { status: 201 },
+          ),
         );
 
       const { app, env } = await createApp(makeAuth());
@@ -613,7 +597,7 @@ describe("admin/issues", () => {
       );
 
       expect(res.status).toBe(201);
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
     it("still returns 201 when codex follow-up calls fail", async () => {
@@ -621,15 +605,20 @@ describe("admin/issues", () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
-              number: 13,
-              node_id: "NODE_3",
+              iid: 13,
               title: "codex issue failure path",
-              body: "details",
+              description: "details",
+              state: "opened",
+              labels: ["codex"],
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              web_url:
+                "http://192.168.50.215:8929/root/safetywallet/-/issues/13",
+              author: { id: 7, username: "admin", name: "Admin" },
             }),
             { status: 201 },
           ),
         )
-        .mockRejectedValueOnce(new Error("graphql down"))
         .mockRejectedValueOnce(new Error("comment down"));
 
       const { app, env } = await createApp(makeAuth());
@@ -656,19 +645,30 @@ describe("admin/issues", () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
-              number: 15,
-              node_id: "NODE_5",
+              iid: 15,
               title: "no-body issue",
-              body: null,
+              description: null,
+              state: "opened",
+              labels: ["codex"],
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              web_url:
+                "http://192.168.50.215:8929/root/safetywallet/-/issues/15",
+              author: { id: 7, username: "admin", name: "Admin" },
             }),
             { status: 201 },
           ),
         )
         .mockResolvedValueOnce(
-          new Response(JSON.stringify({ data: {} }), { status: 200 }),
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ id: 2 }), { status: 201 }),
+          new Response(
+            JSON.stringify({
+              id: 2,
+              body: "@codex no-body issue",
+              created_at: "2026-01-01T00:00:00.000Z",
+              author: { id: 7, username: "admin", name: "Admin" },
+            }),
+            { status: 201 },
+          ),
         );
 
       const { app, env } = await createApp(makeAuth());
@@ -686,7 +686,7 @@ describe("admin/issues", () => {
       );
 
       expect(res.status).toBe(201);
-      const commentCall = fetchSpy.mock.calls[2];
+      const commentCall = fetchSpy.mock.calls[1];
       const commentBody = JSON.parse(commentCall[1]?.body as string) as {
         body: string;
       };
@@ -716,16 +716,21 @@ describe("admin/issues", () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
-              number: 14,
-              node_id: "NODE_4",
+              iid: 14,
               title: "codex non-error",
-              body: "details",
+              description: "details",
+              state: "opened",
+              labels: ["codex"],
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              web_url:
+                "http://192.168.50.215:8929/root/safetywallet/-/issues/14",
+              author: { id: 7, username: "admin", name: "Admin" },
             }),
             { status: 201 },
           ),
         )
-        .mockRejectedValueOnce("string-error-not-Error-instance")
-        .mockRejectedValueOnce("another-string-error");
+        .mockRejectedValueOnce("string-error-not-Error-instance");
 
       const { app, env } = await createApp(makeAuth());
       const res = await app.request(

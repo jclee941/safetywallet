@@ -6,6 +6,10 @@ export default defineConfig({
     name: "types",
     environment: "node",
     globals: true,
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "../../junit-types.xml",
+    },
     include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",

@@ -76,7 +76,11 @@ describe("createErrorIssue", () => {
   });
 
   it("does not store fingerprint when GitLab API fails", async () => {
-    const mockResponse = { ok: false, status: 422 };
+    const mockResponse = {
+      ok: false,
+      status: 422,
+      text: async () => "Validation failed",
+    };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     const kv = mockKV();
@@ -98,8 +102,8 @@ describe("createErrorIssue", () => {
     const body = JSON.parse(
       (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
     );
-    expect(body.body).toContain("db.ts:42");
-    expect(body.body).toContain("routes.ts:10");
+    expect(body.description).toContain("db.ts:42");
+    expect(body.description).toContain("routes.ts:10");
   });
 
   it("uses fallback stack text when stack is missing", async () => {
@@ -117,7 +121,7 @@ describe("createErrorIssue", () => {
     const body = JSON.parse(
       (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
     );
-    expect(body.body).toContain("(no stack)");
+    expect(body.description).toContain("(no stack)");
   });
 
   it("different endpoints produce different fingerprints", async () => {
