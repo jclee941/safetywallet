@@ -431,14 +431,14 @@ app.onError((err, c) => {
     method: c.req.method,
   });
 
-  // Auto-create GitHub issue for unhandled (non-HTTP) errors
-  if (!(err instanceof Error && "getResponse" in err) && c.env.GITHUB_TOKEN) {
+  // Auto-create GitLab issue for unhandled (non-HTTP) errors
+  if (!(err instanceof Error && "getResponse" in err) && c.env.GITLAB_TOKEN) {
     c.executionCtx.waitUntil(
       createErrorIssue({
         error: err instanceof Error ? err : new Error(String(err)),
         endpoint: c.req.path,
         method: c.req.method,
-        githubToken: c.env.GITHUB_TOKEN,
+        gitlabToken: c.env.GITLAB_TOKEN,
         kv: c.env.KV,
       }),
     );

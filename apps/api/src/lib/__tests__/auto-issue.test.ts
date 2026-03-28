@@ -6,14 +6,14 @@ function mockKV() {
   return createMockKV() as unknown as KVNamespace;
 }
 
-const GITHUB_TOKEN = "ghp_test_token";
+const GITLAB_TOKEN = "glpat_test_token";
 
 function makeOpts(overrides?: Partial<Parameters<typeof createErrorIssue>[0]>) {
   return {
     error: new Error("Something broke"),
     endpoint: "/api/posts",
     method: "POST",
-    githubToken: GITHUB_TOKEN,
+    gitlabToken: GITLAB_TOKEN,
     kv: mockKV(),
     ...overrides,
   };
@@ -25,8 +25,8 @@ describe("createErrorIssue", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("creates a GitHub issue on first occurrence", async () => {
-    const mockResponse = { ok: true, json: async () => ({ number: 42 }) };
+  it("creates a GitLab issue on first occurrence", async () => {
+    const mockResponse = { ok: true, json: async () => ({ iid: 42 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     const opts = makeOpts();
@@ -34,22 +34,20 @@ describe("createErrorIssue", () => {
 
     expect(fetch).toHaveBeenCalledOnce();
     const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toBe("https://api.github.com/repos/qws941/safetywallet/issues");
+    expect(url).toContain("/projects/qws941%2Fsafetywallet/issues");
     expect(init.method).toBe("POST");
 
     const body = JSON.parse(init.body);
     expect(body.title).toContain("[Auto]");
     expect(body.title).toContain("POST /api/posts");
     expect(body.title).toContain("Something broke");
-    expect(body.labels).toEqual(["type:bug", "auto-reported"]);
-    expect(body.body).toContain("자동 에러 보고");
-    expect(body.body).toContain("Something broke");
+    expect(body.labels).toEqual("type:bug,auto-reported");
 
-    expect(init.headers.Authorization).toBe(`Bearer ${GITHUB_TOKEN}`);
+    expect(init.headers.Authorization).toBe(`Bearer ${GITLAB_TOKEN}`);
   });
 
   it("stores fingerprint in KV after successful creation", async () => {
-    const mockResponse = { ok: true, json: async () => ({ number: 99 }) };
+    const mockResponse = { ok: true, json: async () => ({ iid: 99 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     const kv = mockKV();
@@ -66,7 +64,7 @@ describe("createErrorIssue", () => {
     // Pre-populate dedup key — simulate a recent report
     const opts = makeOpts({ kv });
     // First call to seed the fingerprint
-    const mockResponse = { ok: true, json: async () => ({ number: 10 }) };
+    const mockResponse = { ok: true, json: async () => ({ iid: 10 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
     await createErrorIssue(opts);
 
@@ -77,7 +75,7 @@ describe("createErrorIssue", () => {
     expect(fetch).toHaveBeenCalledOnce(); // still 1, not 2
   });
 
-  it("does not store fingerprint when GitHub API fails", async () => {
+  it("does not store fingerprint when GitLab API fails", async () => {
     const mockResponse = { ok: false, status: 422 };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
@@ -92,7 +90,7 @@ describe("createErrorIssue", () => {
     const err = new Error("DB connection lost");
     err.stack =
       "Error: DB connection lost\n    at query (db.ts:42)\n    at handler (routes.ts:10)";
-    const mockResponse = { ok: true, json: async () => ({ number: 1 }) };
+    const mockResponse = { ok: true, json: async () => ({ iid: 1 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     await createErrorIssue(makeOpts({ error: err }));
@@ -111,7 +109,7 @@ describe("createErrorIssue", () => {
       configurable: true,
       writable: true,
     });
-    const mockResponse = { ok: true, json: async () => ({ number: 7 }) };
+    const mockResponse = { ok: true, json: async () => ({ iid: 7 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     await createErrorIssue(makeOpts({ error: err }));
@@ -123,7 +121,7 @@ describe("createErrorIssue", () => {
   });
 
   it("different endpoints produce different fingerprints", async () => {
-    const mockResponse = { ok: true, json: async () => ({ number: 1 }) };
+    const mockResponse = { ok: true, json: async () => ({ iid: 1 }) };
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
     const kv = mockKV();

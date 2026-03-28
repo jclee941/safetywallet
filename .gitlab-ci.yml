@@ -1,0 +1,291 @@
+# GitLab CI/CD for SafetyWallet
+# Migrated from GitHub Actions (ci.yml)
+
+variables:
+  NODE_VERSION: "20"
+  GO_VERSION: "1.24"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  TURBO_CACHE_DIR: "$CI_PROJECT_DIR/.turbo"
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: "fast"
+  CACHE_COMPRESSION_LEVEL: "fast"
+
+# Pipeline stages
+stages:
+  - prepare
+  - validate
+  - test
+  - build
+  - e2e
+  - deploy
+  - notify
+
+# Cache configuration
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+    - .turbo/
+  policy: pull-push
+
+# Default job configuration
+default:
+  image: node:20-slim
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+# =============================================================================
+# PREPARE STAGE
+# =============================================================================
+
+# No explicit prepare jobs needed - npm ci runs in before_script
+
+# =============================================================================
+# VALIDATE STAGE
+# =============================================================================
+
+lint:
+  stage: validate
+  script:
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+typecheck:
+  stage: validate
+  script:
+    - npm run typecheck
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+guards:
+  stage: validate
+  image: node:20-slim
+  before_script:
+    - apt-get update && apt-get install -y grep
+    - npm ci --cache .npm --prefer-offline
+  script:
+    # Block legacy runtime naming
+    - |
+      forbidden='safework2-api\.jclee\.workers\.dev|safetywallet-api\.jclee\.workers\.dev|workspace=safework2-api|Deploy SafeWork2'
+      targets='docs/cloudflare-operations.md package.json'
+      if grep -rnE "$forbidden" $targets 2>/dev/null; then
+        echo "ERROR: Legacy runtime naming detected. Use single-worker safetywallet naming."
+        exit 1
+      fi
+    # Ensure root/app wrangler configs stay aligned
+    - node scripts/check-wrangler-sync.js
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+code-quality:
+  stage: validate
+  image: golang:1.24
+  before_script:
+    - apt-get update && apt-get install -y nodejs npm
+    - npm ci --cache .npm --prefer-offline
+  script:
+    # Anti-pattern checks
+    - |
+      files=$(find apps packages -type f \( -name '*.ts' -o -name '*.tsx' \) ! -path '*/node_modules/*' ! -path '*/.next/*' ! -path '*/dist/*' ! -path '*/out/*')
+      if [ -n "$files" ]; then
+        echo "$files" | xargs go run scripts/check-anti-patterns.go
+      fi
+    # Naming conventions
+    - npm run lint:naming
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+# =============================================================================
+# TEST STAGE
+# =============================================================================
+
+unit-test:
+  stage: test
+  script:
+    - npm run test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - junit.xml
+    paths:
+      - coverage/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+security:
+  stage: test
+  script:
+    - npm audit --audit-level=critical
+  allow_failure: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+sast:
+  stage: test
+  image: zricethezav/gitleaks:latest
+  script:
+    - gitleaks detect --verbose --redact --no-git --source .
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+d1-dryrun:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - cd apps/api
+    - npx wrangler d1 migrations apply safetywallet-db --local --config wrangler.toml
+
+# =============================================================================
+# BUILD STAGE
+# =============================================================================
+
+build:types:
+  stage: build
+  script:
+    - npm run build --workspace=packages/types
+  artifacts:
+    paths:
+      - packages/types/dist/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+build:worker:
+  stage: build
+  needs: [build:types]
+  script:
+    - npm run build --workspace=apps/worker
+  artifacts:
+    paths:
+      - apps/worker/out/
+    expire_in: 1 day
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+build:admin:
+  stage: build
+  needs: [build:types]
+  script:
+    - npm run build --workspace=apps/admin
+  artifacts:
+    paths:
+      - apps/admin/out/
+    expire_in: 1 day
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+build:api:
+  stage: build
+  needs: [build:types]
+  script:
+    - npm run build --workspace=apps/api
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+# =============================================================================
+# E2E STAGE
+# =============================================================================
+
+e2e-smoke:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.51.1-jammy
+  needs: [build:worker, build:admin]
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npx playwright install --with-deps chromium
+    - npx playwright test --project=worker-smoke --project=admin-smoke
+  artifacts:
+    when: always
+    paths:
+      - playwright-report/
+      - test-results/
+    expire_in: 3 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+# =============================================================================
+# DEPLOY STAGE
+# =============================================================================
+
+d1-migrate:
+  stage: deploy
+  needs: [build:api]
+  environment:
+    name: production
+    url: https://safetywallet.jclee.me
+  script:
+    - cd apps/api
+    - npx wrangler d1 migrations apply safetywallet-db --remote --env="" --config wrangler.toml
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+# =============================================================================
+# NOTIFY STAGE
+# =============================================================================
+
+notify:slack:
+  stage: notify
+  image: alpine/curl:latest
+  needs:
+    - lint
+    - typecheck
+    - guards
+    - code-quality
+    - unit-test
+    - security
+    - sast
+    - e2e-smoke
+    - d1-migrate
+  before_script: []
+  script:
+    - |
+      if [ -z "$SLACK_WEBHOOK_URL" ]; then
+        echo "Slack webhook not configured. Skipping."
+        exit 0
+      fi
+
+      if [ "$CI_PIPELINE_STATUS" = "success" ]; then
+        emoji="✅"
+        status="passed"
+        color="good"
+      else
+        emoji="❌"
+        status="failed"
+        color="danger"
+      fi
+
+      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
+      commit_msg=$(printf '%s' "$CI_COMMIT_MESSAGE" | head -1 | sed 's/["\\]/\\&/g')
+      run_url="$CI_PIPELINE_URL"
+
+      payload=$(jq -n \
+        --arg color "$color" \
+        --arg text "${emoji} *CI ${status}* — <${run_url}|safetywallet#${short_sha}>\n${commit_msg}" \
+        '{attachments: [{color: $color, blocks: [{type: "section", text: {type: "mrkdwn", text: $text}}]}]}')
+
+      curl -sS --fail-with-body --retry 2 --max-time 10 \
+        -X POST "$SLACK_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d "$payload" || echo "WARNING: Slack notification failed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: always

@@ -1,14 +1,16 @@
 /**
- * Automatic GitHub issue creation on unhandled errors.
+ * Automatic GitLab issue creation on unhandled errors.
  *
+ * Migrated from GitHub to GitLab.
  * - Deduplicates via KV (fingerprint = error message + endpoint, 1h TTL)
  * - Only fires for 500-level (non-HTTP) errors
  * - Non-blocking: caller wraps in `waitUntil`
  * - Labels: type:bug, auto-reported
  */
 
-const GITHUB_OWNER = "qws941";
-const GITHUB_REPO = "safetywallet";
+import { GitLabClient } from "./gitlab-client";
+
+const GITLAB_PROJECT_ID = "qws941/safetywallet";
 
 /** KV key prefix for dedup tracking */
 const KV_PREFIX = "auto-issue:";
@@ -20,7 +22,7 @@ interface AutoIssueOptions {
   error: Error;
   endpoint: string;
   method: string;
-  githubToken: string;
+  gitlabToken: string;
   kv: KVNamespace;
 }
 
@@ -37,11 +39,11 @@ function fingerprint(errorMessage: string, endpoint: string): string {
 }
 
 /**
- * Create a GitHub issue for an unhandled error.
+ * Create a GitLab issue for an unhandled error.
  * Skips if a recent issue already exists for this error fingerprint.
  */
 export async function createErrorIssue(opts: AutoIssueOptions): Promise<void> {
-  const { error, endpoint, method, githubToken, kv } = opts;
+  const { error, endpoint, method, gitlabToken, kv } = opts;
 
   const key = fingerprint(error.message, endpoint);
 
@@ -50,7 +52,7 @@ export async function createErrorIssue(opts: AutoIssueOptions): Promise<void> {
   if (existing) return;
 
   const title = `[Auto] ${method} ${endpoint} — ${error.message.split("\n")[0].slice(0, 80)}`;
-  const body = [
+  const description = [
     "## 자동 에러 보고",
     "",
     `**Endpoint:** \`${method} ${endpoint}\``,
@@ -65,30 +67,20 @@ export async function createErrorIssue(opts: AutoIssueOptions): Promise<void> {
     "_이 이슈는 API 에러 핸들러에서 자동 생성되었습니다._",
   ].join("\n");
 
-  const res = await fetch(
-    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${githubToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "safetywallet-api",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        labels: ["type:bug", "auto-reported"],
-      }),
-    },
-  );
+  const client = new GitLabClient(gitlabToken, GITLAB_PROJECT_ID);
 
-  if (res.ok) {
-    const issue = (await res.json()) as { number: number };
-    // Store fingerprint → issue number for dedup window
-    await kv.put(key, String(issue.number), {
+  try {
+    const issue = await client.createIssue({
+      title,
+      description,
+      labels: ["type:bug", "auto-reported"],
+    });
+
+    // Store fingerprint → issue IID for dedup window
+    await kv.put(key, String(issue.iid), {
       expirationTtl: DEDUP_TTL_SECONDS,
     });
+  } catch (err) {
+    console.error("Failed to create GitLab issue:", err);
   }
 }

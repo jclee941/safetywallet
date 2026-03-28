@@ -5,12 +5,12 @@ import type { Env, AuthContext } from "../../types";
 import { success, error } from "../../lib/response";
 import { requireAdmin } from "./helpers";
 import { createLogger } from "../../lib/logger";
+import { GitLabClient } from "../../lib/gitlab-client";
 
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 const logger = createLogger("admin/issues");
 
-const GITHUB_OWNER = "qws941";
-const GITHUB_REPO = "safetywallet";
+const GITLAB_PROJECT_ID = "qws941/safetywallet";
 
 function toStatusCode(status: number): ContentfulStatusCode {
   if (status >= 400 && status <= 599) {
@@ -19,19 +19,19 @@ function toStatusCode(status: number): ContentfulStatusCode {
   return 502;
 }
 
-function getGitHubErrorMessage(raw: string, fallback: string): string {
+function getGitLabErrorMessage(raw: string, fallback: string): string {
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as { message?: unknown };
     if (typeof parsed.message === "string" && parsed.message.trim()) {
       return parsed.message.trim();
     }
-  } catch (error) {
-    logger.warn("Failed to parse GitHub error JSON", {
+  } catch (err) {
+    logger.warn("Failed to parse GitLab error JSON", {
       error:
-        error instanceof Error
-          ? { name: error.name, message: error.message }
-          : { name: "UnknownError", message: String(error) },
+        err instanceof Error
+          ? { name: err.name, message: err.message }
+          : { name: "Unknown", message: String(err) },
     });
   }
   return raw.slice(0, 300);
@@ -59,34 +59,13 @@ interface ParsedTemplate {
   fields: TemplateField[];
 }
 
-interface YamlBodyEntry {
-  type?: string;
-  id?: string;
-  attributes?: {
-    label?: string;
-    description?: string;
-    placeholder?: string;
-    options?: string[];
-  };
-  validations?: {
-    required?: boolean;
-  };
-}
-
-interface YamlTemplate {
-  name?: string;
-  description?: string;
-  labels?: string[];
-  body?: YamlBodyEntry[];
-}
-
-const TEMPLATE_FILES = ["bug_report.yml", "feature_request.yml", "task.yml"];
-const KV_CACHE_KEY = "github:issue-templates";
+const TEMPLATE_FILES = ["bug_report.md", "feature_request.md", "task.md"];
+const KV_CACHE_KEY = "gitlab:issue-templates";
 const KV_CACHE_TTL = 3600;
 
-/** GET /issues/templates — fetch and parse GitHub issue templates */
+/** GET /issues/templates — fetch and parse GitLab issue templates */
 app.get("/issues/templates", requireAdmin, async (c) => {
-  const token = c.env.GITHUB_TOKEN;
+  const token = c.env.GITLAB_TOKEN;
   const kv = c.env.KV;
 
   // Check KV cache first
@@ -94,62 +73,106 @@ app.get("/issues/templates", requireAdmin, async (c) => {
     try {
       const cached = await kv.get(KV_CACHE_KEY, "json");
       if (cached) return success(c, cached);
-    } catch (error) {
-      logger.error("Failed to read KV cache for issue templates", error);
+    } catch (err) {
+      logger.error("Failed to read KV cache for issue templates", {
+        error:
+          err instanceof Error
+            ? { name: err.name, message: err.message }
+            : { name: "Unknown", message: String(err) },
+      });
     }
   }
 
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "safetywallet-admin",
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  if (!token) {
+    return error(c, "MISSING_TOKEN", "GITLAB_TOKEN not configured", 503);
   }
+
+  const client = new GitLabClient(token, GITLAB_PROJECT_ID);
 
   try {
     const templates: ParsedTemplate[] = [];
 
     for (const file of TEMPLATE_FILES) {
-      const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/.github/ISSUE_TEMPLATE/${file}`;
-      const res = await fetch(url, { headers });
+      try {
+        const fileData = await client.getRepositoryFile(
+          `.gitlab/issue_templates/${file}`,
+          "master",
+        );
 
-      if (!res.ok) continue;
+        if (!fileData.content) continue;
 
-      const data = (await res.json()) as { content?: string };
-      if (!data.content) continue;
+        // Decode base64 content
+        const decoded = atob(fileData.content);
 
-      const decoded = atob(data.content.replace(/\n/g, ""));
-      const yml = parse(decoded) as YamlTemplate;
+        // Parse frontmatter from markdown
+        const frontmatterMatch = decoded.match(
+          /^\u003c!--\s*\n?([\s\S]*?)\n?\s*--\u003e/,
+        );
+        const yamlContent = frontmatterMatch ? frontmatterMatch[1] : "";
+        const yml = parse(yamlContent) as {
+          name?: string;
+          description?: string;
+          labels?: string[];
+        };
 
-      if (!yml?.name || !yml?.body) continue;
+        if (!yml?.name) continue;
 
-      const slug = file.replace(/\.yml$/, "");
-      const fields: TemplateField[] = [];
+        const slug = file.replace(/\.md$/, "");
 
-      for (const entry of yml.body) {
-        if (entry.type !== "textarea" && entry.type !== "dropdown") continue;
-        if (!entry.id || !entry.attributes?.label) continue;
+        // Convert to field format similar to GitHub templates
+        const fields: TemplateField[] = [];
 
-        fields.push({
-          id: entry.id,
-          type: entry.type as "textarea" | "dropdown",
-          label: entry.attributes.label,
-          description: entry.attributes.description,
-          placeholder: entry.attributes.placeholder,
-          options: entry.attributes.options,
-          required: entry.validations?.required ?? false,
+        // Extract sections from markdown
+        const sections = decoded.split(/^## /m).slice(1);
+        for (const section of sections) {
+          const lines = section.split("\n");
+          const title = lines[0].trim();
+          const content = lines.slice(1).join("\n").trim();
+
+          // Check if it's a dropdown
+          const dropdownMatch = content.match(/- \[([ x])\] (.+)/g);
+          if (dropdownMatch) {
+            const options: string[] = dropdownMatch.map((m: string) =>
+              m.replace(/- \[[ x]\] /, "").trim(),
+            );
+            fields.push({
+              id: title.toLowerCase().replace(/\s+/g, "_"),
+              type: "dropdown",
+              label: title,
+              description: `Select ${title.toLowerCase()}`,
+              options,
+              required: false,
+            });
+          } else {
+            fields.push({
+              id: title.toLowerCase().replace(/\s+/g, "_"),
+              type: "textarea",
+              label: title,
+              description: content.substring(0, 100),
+              placeholder: content.includes("<!--")
+                ? content.match(/\u003c!--\s*(.+?)\s*--\u003e/)?.[1] || ""
+                : "",
+              required: false,
+            });
+          }
+        }
+
+        templates.push({
+          slug,
+          name: yml.name,
+          description: yml.description || "",
+          labels: yml.labels || [],
+          fields,
         });
+      } catch (err) {
+        logger.warn(`Failed to fetch template ${file}`, {
+          error:
+            err instanceof Error
+              ? { name: err.name, message: err.message }
+              : { name: "Unknown", message: String(err) },
+        });
+        continue;
       }
-
-      templates.push({
-        slug,
-        name: yml.name,
-        description: yml.description || "",
-        labels: yml.labels || [],
-        fields,
-      });
     }
 
     // Cache in KV
@@ -158,8 +181,13 @@ app.get("/issues/templates", requireAdmin, async (c) => {
         await kv.put(KV_CACHE_KEY, JSON.stringify(templates), {
           expirationTtl: KV_CACHE_TTL,
         });
-      } catch (error) {
-        logger.error("Failed to write KV cache for issue templates", error);
+      } catch (err) {
+        logger.error("Failed to write KV cache for issue templates", {
+          error:
+            err instanceof Error
+              ? { name: err.name, message: err.message }
+              : { name: "Unknown", message: String(err) },
+        });
       }
     }
 
@@ -167,72 +195,70 @@ app.get("/issues/templates", requireAdmin, async (c) => {
   } catch {
     return error(
       c,
-      "GITHUB_UPSTREAM_UNAVAILABLE",
-      "Failed to fetch issue templates from GitHub",
+      "GITLAB_UPSTREAM_UNAVAILABLE",
+      "Failed to fetch issue templates from GitLab",
       502,
     );
   }
 });
 
-/** GET /issues — list GitHub issues */
+/** GET /issues — list GitLab issues */
 app.get("/issues", requireAdmin, async (c) => {
-  const token = c.env.GITHUB_TOKEN;
+  const token = c.env.GITLAB_TOKEN;
 
-  const state = c.req.query("state") || "open";
+  if (!token) {
+    return error(c, "MISSING_TOKEN", "GITLAB_TOKEN not configured", 503);
+  }
+
+  const state = c.req.query("state") || "opened";
   const labels = c.req.query("labels") || "";
-  const page = c.req.query("page") || "1";
-  const perPage = c.req.query("per_page") || "30";
+  const page = parseInt(c.req.query("page") || "1", 10);
+  const perPage = parseInt(c.req.query("per_page") || "30", 10);
 
-  const url = new URL(
-    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues`,
-  );
-  url.searchParams.set("state", state);
-  url.searchParams.set("page", page);
-  url.searchParams.set("per_page", perPage);
-  url.searchParams.set("sort", "created");
-  url.searchParams.set("direction", "desc");
-  if (labels) url.searchParams.set("labels", labels);
+  const client = new GitLabClient(token, GITLAB_PROJECT_ID);
 
   try {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "safetywallet-admin",
-    };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    const issues = await client.listIssues({
+      state: state === "all" ? "all" : state === "closed" ? "closed" : "opened",
+      labels: labels || undefined,
+      page,
+      per_page: perPage,
+    });
 
-    const res = await fetch(url.toString(), { headers });
+    // Transform GitLab issues to match GitHub format for compatibility
+    const transformedIssues = issues.map((issue) => ({
+      number: issue.iid,
+      title: issue.title,
+      body: issue.description,
+      state: issue.state,
+      labels: issue.labels.map((label) => ({ name: label })),
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+      html_url: issue.web_url,
+      user: {
+        login: issue.author.username,
+        avatar_url: `https://gitlab.com/uploads/-/system/user/avatar/${issue.author.id}/avatar.png`,
+      },
+    }));
 
-    if (!res.ok) {
-      const errText = await res.text();
-      const message = getGitHubErrorMessage(
-        errText,
-        "GitHub issues API request failed",
-      );
-      return error(c, "GITHUB_ERROR", message, toStatusCode(res.status));
-    }
-
-    const allItems = (await res.json()) as Record<string, unknown>[];
-    // GitHub Issues API returns both issues and PRs — filter out PRs
-    const issues = allItems.filter((item) => !item.pull_request);
-    return success(c, issues);
-  } catch {
+    return success(c, transformedIssues);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error("Failed to list GitLab issues", { error: message });
     return error(
       c,
-      "GITHUB_UPSTREAM_UNAVAILABLE",
-      "Failed to reach GitHub API",
+      "GITLAB_UPSTREAM_UNAVAILABLE",
+      "Failed to reach GitLab API",
       502,
     );
   }
 });
 
-/** POST /issues — create GitHub issue with optional codex assignment */
+/** POST /issues — create GitLab issue with optional codex assignment */
 app.post("/issues", requireAdmin, async (c) => {
-  const token = c.env.GITHUB_TOKEN;
+  const token = c.env.GITLAB_TOKEN;
   if (!token) {
-    return error(c, "MISSING_TOKEN", "GITHUB_TOKEN not configured", 503);
+    return error(c, "MISSING_TOKEN", "GITLAB_TOKEN not configured", 503);
   }
 
   let body: {
@@ -262,107 +288,51 @@ app.post("/issues", requireAdmin, async (c) => {
     labels.push("codex");
   }
 
+  const client = new GitLabClient(token, GITLAB_PROJECT_ID);
+
   try {
     // Create issue
-    const createRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "safetywallet-admin",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: body.title.trim(),
-          body: body.body?.trim() || "",
-          labels,
-        }),
-      },
-    );
+    const issue = await client.createIssue({
+      title: body.title.trim(),
+      description: body.body?.trim() || "",
+      labels,
+    });
 
-    if (!createRes.ok) {
-      const errText = await createRes.text();
-      const message = getGitHubErrorMessage(
-        errText,
-        "GitHub issue creation failed",
-      );
-      return error(c, "GITHUB_ERROR", message, toStatusCode(createRes.status));
-    }
-
-    const issue = (await createRes.json()) as {
-      number: number;
-      node_id: string;
-      title: string;
-      body: string;
-    };
-
-    // If codex assigned, assign Codex user + post @codex comment
+    // If codex assigned, post @codex comment so Codex agent picks it up
     if (body.assignCodex) {
-      // Assign Codex via GraphQL (REST API silently ignores bot assignees)
-      try {
-        await fetch("https://api.github.com/graphql", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "User-Agent": "safetywallet-admin",
-          },
-          body: JSON.stringify({
-            query: `mutation($assignableId: ID!, $assigneeIds: [ID!]!) {
-            addAssigneesToAssignable(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) {
-              assignable { ... on Issue { number } }
-            }
-          }`,
-            variables: {
-              assignableId: issue.node_id,
-              assigneeIds: ["BOT_kgDODnSAjQ"],
-            },
-          }),
-        });
-      } catch (error) {
-        // Bot assignee may fail — non-blocking
-        logger.warn("Failed to assign Codex bot via GraphQL", {
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message }
-              : { name: "UnknownError", message: String(error) },
-        });
-      }
-
-      // Post @codex comment so Codex agent picks it up
-      const commentBody = [`@codex ${issue.title}`, "", issue.body || ""]
+      const commentBody = [`@codex ${issue.title}`, "", issue.description || ""]
         .join("\n")
         .trim();
 
       try {
-        await fetch(
-          `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${issue.number}/comments`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-              "User-Agent": "safetywallet-admin",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ body: commentBody }),
-          },
-        );
-      } catch (error) {
-        logger.error("Failed to post @codex comment", error);
+        await client.createIssueComment(issue.iid, commentBody);
+      } catch (err) {
+        logger.error("Failed to post @codex comment", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
-    return success(c, issue, 201);
-  } catch {
+    // Transform response to match GitHub format
+    const transformedIssue = {
+      number: issue.iid,
+      title: issue.title,
+      body: issue.description,
+      state: issue.state,
+      labels: issue.labels.map((label) => ({ name: label })),
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+      html_url: issue.web_url,
+    };
+
+    return success(c, transformedIssue, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error("Failed to create GitLab issue", { error: message });
     return error(
       c,
-      "GITHUB_UPSTREAM_UNAVAILABLE",
-      "Failed to reach GitHub API",
+      "GITLAB_UPSTREAM_UNAVAILABLE",
+      "Failed to reach GitLab API",
       502,
     );
   }
