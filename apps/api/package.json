@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:inspect": "wrangler dev --inspector-port 9229",
     "build": "wrangler deploy --env=\"\" --dry-run --outdir=dist --config wrangler.toml",
     "typecheck": "tsc --noEmit",
     "deploy": "node -e \"console.error('Manual deploy is disabled. Deployment is controlled by GitLab CI (git-ref based).'); process.exit(1)\"",

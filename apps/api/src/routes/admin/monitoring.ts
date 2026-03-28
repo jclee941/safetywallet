@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { sql, gte, lte, and, desc } from "drizzle-orm";
 import { apiMetrics } from "../../db/schema";
 import { success } from "../../lib/response";
-import { requireAdmin, type AppContext } from "./helpers";
+import { requireAdmin, requireSuperAdmin, type AppContext } from "./helpers";
 
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 
@@ -163,3 +163,96 @@ app.get("/monitoring/summary", requireAdmin, async (c: AppContext) => {
 });
 
 export default app;
+
+/**
+ * GET /monitoring/health
+ * Deployment health check endpoint for CI/CD verification.
+ * Returns detailed health status of all bindings and services.
+ */
+app.get("/monitoring/health", requireSuperAdmin, async (c: AppContext) => {
+  const health = {
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    version: c.env.VERSION || "unknown",
+    checks: {} as Record<
+      string,
+      { status: string; latency: number; error?: string }
+    >,
+  };
+
+  // Check D1 Database
+  const d1Start = Date.now();
+  try {
+    const db = drizzle(c.env.DB);
+    await db
+      .select({ count: sql`count(*)` })
+      .from(apiMetrics)
+      .limit(1);
+    health.checks.d1 = { status: "ok", latency: Date.now() - d1Start };
+  } catch (err) {
+    health.checks.d1 = {
+      status: "error",
+      latency: Date.now() - d1Start,
+      error: "D1 query failed",
+    };
+    health.status = "unhealthy";
+  }
+
+  // Check KV
+  const kvStart = Date.now();
+  try {
+    await c.env.KV.get("health-check-test");
+    health.checks.kv = { status: "ok", latency: Date.now() - kvStart };
+  } catch (err) {
+    health.checks.kv = {
+      status: "error",
+      latency: Date.now() - kvStart,
+      error: "KV access failed",
+    };
+    health.status = "unhealthy";
+  }
+
+  // Check R2
+  const r2Start = Date.now();
+  try {
+    await c.env.R2.list({ limit: 1 });
+    health.checks.r2 = { status: "ok", latency: Date.now() - r2Start };
+  } catch (err) {
+    health.checks.r2 = {
+      status: "error",
+      latency: Date.now() - r2Start,
+      error: "R2 access failed",
+    };
+    health.status = "unhealthy";
+  }
+
+  // Check Environment
+  const envStart = Date.now();
+  try {
+    const requiredEnvVars = ["VERSION", "JWT_SECRET"];
+    const missing = requiredEnvVars.filter((v) => !c.env[v as keyof Env]);
+    if (missing.length > 0) {
+      health.checks.environment = {
+        status: "error",
+        latency: Date.now() - envStart,
+        error: `Missing: ${missing.join(", ")}`,
+      };
+      health.status = "unhealthy";
+    } else {
+      health.checks.environment = {
+        status: "ok",
+        latency: Date.now() - envStart,
+      };
+    }
+  } catch (err) {
+    health.checks.environment = {
+      status: "error",
+      latency: Date.now() - envStart,
+      error: "Env check failed",
+    };
+    health.status = "unhealthy";
+  }
+
+  const statusCode = health.status === "healthy" ? 200 : 503;
+  return c.json(health, statusCode);
+});

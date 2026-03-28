@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "next dev -p 3001",
+    "dev:inspect": "NODE_OPTIONS='--inspect=9230' next dev -p 3001",
     "build": "next build",
     "test": "vitest run",
     "start": "next start -p 3001",

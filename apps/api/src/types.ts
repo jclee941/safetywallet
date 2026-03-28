@@ -28,6 +28,8 @@ export interface Env {
   REQUIRE_ATTENDANCE_FOR_LOGIN: string;
   REQUIRE_ATTENDANCE_FOR_POST: string;
   ENVIRONMENT: string;
+  // Deployment version tracking
+  VERSION?: string;
   RATE_LIMITER?: DurableObjectNamespace;
   JOB_SCHEDULER?: DurableObjectNamespace;
   SMS_API_KEY?: string;

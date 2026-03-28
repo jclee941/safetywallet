@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
+    "dev:inspect": "NODE_OPTIONS='--inspect=9231' next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint . --ignore-pattern 'out/**'",

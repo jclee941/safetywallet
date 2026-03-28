@@ -248,6 +248,34 @@ d1-migrate:
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
 
+deploy-verify:
+  stage: deploy
+  image: node:20-slim
+  needs: [d1-migrate]
+  environment:
+    name: production
+    url: https://safetywallet.jclee.me
+  before_script:
+    - apt-get update && apt-get install -y golang-go
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - |
+      echo "Building deploy-verify tool..."
+      cd scripts && go build -o deploy-verify deploy-verify.go && cd ..
+    - |
+      echo "Waiting for deployment to propagate..."
+      sleep 30
+    - |
+      export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CLOUDFLARE_API_TOKEN_WORKER:-${CLOUDFLARE_API_TOKEN_ADMIN:-${CLOUDFLARE_API_TOKEN_PURGE:-${CF_API_TOKEN:-}}}}}}"
+      if [ -n "$ADMIN_TOKEN" ]; then
+        ./scripts/deploy-verify --api https://safetywallet.jclee.me --retries 5
+      else
+        echo "Error: ADMIN_TOKEN not set, deployment verification requires admin access"
+        exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
 # =============================================================================
 # NOTIFY STAGE
 # =============================================================================
@@ -267,6 +295,7 @@ notify:slack:
     - sast
     - e2e-smoke
     - d1-migrate
+    - deploy-verify
   script:
     - |
       if [ -z "$SLACK_WEBHOOK_URL" ]; then

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist, createJSONStorage, devtools } from "zustand/middleware";
 
 interface User {
   id: string;
@@ -25,58 +25,61 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      accessToken: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      currentSiteId: null,
-      _hasHydrated: false,
-      setUser: (user) => set({ user }),
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken }),
-      setCurrentSite: (siteId) => set({ currentSiteId: siteId }),
-      login: (user, accessToken, refreshToken) =>
-        set({
-          user,
-          accessToken,
-          refreshToken,
-          isAuthenticated: true,
-        }),
-      logout: () => {
-        const currentRefreshToken = get().refreshToken;
-        if (currentRefreshToken) {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-          fetch(`${apiUrl}/auth/logout`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken: currentRefreshToken }),
-          }).catch(() => {});
-        }
-        set({
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          isAuthenticated: false,
-          currentSiteId: null,
-        });
-      },
-    }),
-    {
-      name: "safetywallet-auth",
-      storage:
-        typeof window !== "undefined"
-          ? createJSONStorage(() => localStorage)
-          : undefined,
-      partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        isAuthenticated: state.isAuthenticated,
-        currentSiteId: state.currentSiteId,
+  devtools(
+    persist(
+      (set, get) => ({
+        user: null,
+        accessToken: null,
+        refreshToken: null,
+        isAuthenticated: false,
+        currentSiteId: null,
+        _hasHydrated: false,
+        setUser: (user) => set({ user }),
+        setTokens: (accessToken, refreshToken) =>
+          set({ accessToken, refreshToken }),
+        setCurrentSite: (siteId) => set({ currentSiteId: siteId }),
+        login: (user, accessToken, refreshToken) =>
+          set({
+            user,
+            accessToken,
+            refreshToken,
+            isAuthenticated: true,
+          }),
+        logout: () => {
+          const currentRefreshToken = get().refreshToken;
+          if (currentRefreshToken) {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+            fetch(`${apiUrl}/auth/logout`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refreshToken: currentRefreshToken }),
+            }).catch(() => {});
+          }
+          set({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            isAuthenticated: false,
+            currentSiteId: null,
+          });
+        },
       }),
-    },
+      {
+        name: "safetywallet-auth",
+        storage:
+          typeof window !== "undefined"
+            ? createJSONStorage(() => localStorage)
+            : undefined,
+        partialize: (state) => ({
+          user: state.user,
+          accessToken: state.accessToken,
+          refreshToken: state.refreshToken,
+          isAuthenticated: state.isAuthenticated,
+          currentSiteId: state.currentSiteId,
+        }),
+      },
+    ),
+    { name: "Worker Auth Store" },
   ),
 );
 

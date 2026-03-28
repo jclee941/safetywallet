@@ -1,6 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Toaster } from "@safetywallet/ui";
@@ -81,6 +82,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <SiteBootstrapGate>{children}</SiteBootstrapGate>
       <Toaster />
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }

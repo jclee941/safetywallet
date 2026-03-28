@@ -12,6 +12,7 @@ This index defines current documentation sources of truth.
 - Implementation verification checklist: `docs/requirements/IMPLEMENTATION_VERIFICATION_CHECKLIST.md`
 - Registration verification report: `docs/requirements/REGISTRATION_VERIFICATION_REPORT.md`
 - Phase 3 UI simplification PRD: `docs/requirements/Phase3_UI_Simplification_PRD.md`
+- Deployment verification guide: `docs/deployment-verification.md`
 
 ## Redirected
 

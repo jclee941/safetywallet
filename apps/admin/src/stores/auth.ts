@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist, createJSONStorage, devtools } from "zustand/middleware";
 import { UserRole } from "@safetywallet/types";
 import { API_BASE } from "@/lib/api";
 
@@ -28,50 +28,55 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      tokens: null,
-      currentSiteId: null,
-      isAdmin: false,
-      _hasHydrated: false,
-      login: (user, tokens) =>
-        set({
-          user,
-          tokens,
-          isAdmin:
-            user.role === UserRole.SITE_ADMIN ||
-            user.role === UserRole.SUPER_ADMIN,
-        }),
-      logout: () => {
-        const { tokens: currentTokens } = get();
-        if (currentTokens?.refreshToken) {
-          fetch(`${API_BASE}/auth/logout`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken: currentTokens.refreshToken }),
-          }).catch(() => {});
-        }
-        set({
-          user: null,
-          tokens: null,
-          currentSiteId: null,
-          isAdmin: false,
-        });
-      },
-      setTokens: (tokens) => set({ tokens }),
-      setSiteId: (siteId) => set({ currentSiteId: siteId }),
-    }),
-    {
-      name: "safetywallet-admin-auth",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        user: state.user,
-        tokens: state.tokens,
-        currentSiteId: state.currentSiteId,
-        isAdmin: state.isAdmin,
+  devtools(
+    persist(
+      (set, get) => ({
+        user: null,
+        tokens: null,
+        currentSiteId: null,
+        isAdmin: false,
+        _hasHydrated: false,
+        login: (user, tokens) =>
+          set({
+            user,
+            tokens,
+            isAdmin:
+              user.role === UserRole.SITE_ADMIN ||
+              user.role === UserRole.SUPER_ADMIN,
+          }),
+        logout: () => {
+          const { tokens: currentTokens } = get();
+          if (currentTokens?.refreshToken) {
+            fetch(`${API_BASE}/auth/logout`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                refreshToken: currentTokens.refreshToken,
+              }),
+            }).catch(() => {});
+          }
+          set({
+            user: null,
+            tokens: null,
+            currentSiteId: null,
+            isAdmin: false,
+          });
+        },
+        setTokens: (tokens) => set({ tokens }),
+        setSiteId: (siteId) => set({ currentSiteId: siteId }),
       }),
-    },
+      {
+        name: "safetywallet-admin-auth",
+        storage: createJSONStorage(() => localStorage),
+        partialize: (state) => ({
+          user: state.user,
+          tokens: state.tokens,
+          currentSiteId: state.currentSiteId,
+          isAdmin: state.isAdmin,
+        }),
+      },
+    ),
+    { name: "Admin Auth Store" },
   ),
 );
 

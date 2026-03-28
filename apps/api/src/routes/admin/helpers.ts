@@ -168,6 +168,14 @@ export const requireAdmin = async (c: AppContext, next: Next) => {
   await next();
 };
 
+export const requireSuperAdmin = async (c: AppContext, next: Next) => {
+  const { user } = c.get("auth");
+  if (user.role !== "SUPER_ADMIN") {
+    return error(c, "SUPER_ADMIN_REQUIRED", "Super admin access required", 403);
+  }
+  await next();
+};
+
 export const requireExportAccess = async (c: AppContext, next: Next) => {
   const { user } = c.get("auth");
   if (user.role === "SUPER_ADMIN") {
