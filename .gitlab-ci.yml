@@ -202,13 +202,6 @@ build:api:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
-  stage: build
-  needs: [build:types]
-  script:
-    - npm run build --workspace=apps/api
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "master"
 
 # =============================================================================
 # E2E STAGE

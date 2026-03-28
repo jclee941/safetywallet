@@ -20,28 +20,6 @@
 - `requirements/` — requirements subtree with local `AGENTS.md`.
 - `archive/` — archived/deprecated documents.
 
-- `AGENTS.md` — local docs governance.
-- `README.md` — docs landing map.
-- `cloudflare-operations.md` — operations runbook source.
-- `FEATURE_CHECKLIST.md` — feature completion checklist.
-- `deployment-verification.md` — deployment verification guide.
-- `ci-cd-debugging.md` — CI/CD troubleshooting guide.
-- `debugging.md` — general debugging guide.
-- `deployment.md` — redirect to operations runbook.
-- `rollback.md` — redirect to operations runbook.
-- `REQUIREMENTS_REVIEW.md` — redirect to requirements checklist.
-- `requirements/` — requirements subtree with local `AGENTS.md`.
-- `archive/` — archived/deprecated documents.
-
-- `AGENTS.md` — local docs governance.
-- `README.md` — docs landing map.
-- `cloudflare-operations.md` — operations runbook source.
-- `FEATURE_CHECKLIST.md` — feature completion checklist.
-- `deployment.md` — redirect to operations runbook.
-- `rollback.md` — redirect to operations runbook.
-- `REQUIREMENTS_REVIEW.md` — redirect to requirements checklist.
-- `requirements/` — requirements subtree with local `AGENTS.md`.
-
 ## CONVENTIONS
 
 - Keep canonical ops procedure text in one file (`cloudflare-operations.md`).
