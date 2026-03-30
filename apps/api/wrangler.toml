@@ -126,7 +126,8 @@ VAPID_SUBJECT = "mailto:admin@safetywallet.jclee.me"
 FAS_DB_NAME = "mdidev"
 FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
-HP|
+
+
 [assets]
 directory = "../../dist"
 binding = "ASSETS"
