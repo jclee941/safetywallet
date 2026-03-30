@@ -148,6 +148,7 @@ describe("auth store", () => {
     vi.doMock("zustand/middleware", () => ({
       persist: (initializer: unknown) => initializer,
       createJSONStorage: () => vi.fn(),
+      devtools: (fn: unknown) => fn,
     }));
 
     await import("@/stores/auth");
@@ -192,6 +193,7 @@ describe("auth store", () => {
     vi.doMock("zustand/middleware", () => ({
       persist: (initializer: unknown) => initializer,
       createJSONStorage: () => vi.fn(),
+      devtools: (fn: unknown) => fn,
     }));
 
     await import("@/stores/auth");

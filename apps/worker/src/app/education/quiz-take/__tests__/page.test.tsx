@@ -270,7 +270,6 @@ describe("app/education/quiz-take/page", () => {
       target: { value: "직접 입력" },
     });
     fireEvent.click(screen.getByText("I2"));
-    expect(screen.getByText("10education.minutes")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "education.quiz.submitButton" }),

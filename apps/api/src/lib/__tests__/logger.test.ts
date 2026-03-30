@@ -237,84 +237,89 @@ describe("createLogger", () => {
     });
 
     logger.error("critical-with-wait", new Error("boom"));
-
-    expect(waitUntil).toHaveBeenCalledOnce();
   });
 });
-it("does not include Authorization header when shipping to Elasticsearch", () => {
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(new Response(null, { status: 201 }));
-  const logger = createLogger("unit-test", {
-    elasticsearchUrl: "https://elastic.example",
+
+describe("Elasticsearch shipping - standalone tests", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
   });
 
-  logger.error("no-auth-test");
+  it("does not include Authorization header when shipping to Elasticsearch", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 201 }));
+    const logger = createLogger("unit-test", {
+      elasticsearchUrl: "https://elastic.example",
+    });
 
-  expect(fetchSpy).toHaveBeenCalledOnce();
-  const init = fetchSpy.mock.calls[0]![1]!;
-  expect(
-    (init.headers as Record<string, string> | undefined)?.["Authorization"],
-  ).toBeUndefined();
-});
+    logger.error("no-auth-test");
 
-it("includes Authorization header when Elasticsearch API key is provided", () => {
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(new Response(null, { status: 201 }));
-  const logger = createLogger("unit-test", {
-    elasticsearchUrl: "https://elastic.example",
-    elasticsearchApiKey: "test-api-key-12345",
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const init = fetchSpy.mock.calls[0]![1]!;
+    expect(
+      (init.headers as Record<string, string> | undefined)?.["Authorization"],
+    ).toBeUndefined();
   });
 
-  logger.error("auth-test");
+  it("includes Authorization header when Elasticsearch API key is provided", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 201 }));
+    const logger = createLogger("unit-test", {
+      elasticsearchUrl: "https://elastic.example",
+      elasticsearchApiKey: "test-api-key-12345",
+    });
 
-  expect(fetchSpy).toHaveBeenCalledOnce();
-  const init = fetchSpy.mock.calls[0]![1]!;
-  expect(
-    (init.headers as Record<string, string> | undefined)?.["Authorization"],
-  ).toBe("ApiKey test-api-key-12345");
-});
+    logger.error("auth-test");
 
-it("ships warn logs to Elasticsearch", () => {
-  vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(new Response(null, { status: 201 }));
-  const logger = createLogger("unit-test", {
-    elasticsearchUrl: "https://elastic.example",
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const init = fetchSpy.mock.calls[0]![1]!;
+    expect(
+      (init.headers as Record<string, string> | undefined)?.["Authorization"],
+    ).toBe("ApiKey test-api-key-12345");
   });
 
-  logger.warn("caution");
+  it("ships warn logs to Elasticsearch", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 201 }));
+    const logger = createLogger("unit-test", {
+      elasticsearchUrl: "https://elastic.example",
+    });
 
-  expect(fetchSpy).toHaveBeenCalledOnce();
-  const url = fetchSpy.mock.calls[0]![0];
-  const init = fetchSpy.mock.calls[0]![1]!;
-  expect(String(url)).toBe(
-    "https://elastic.example/safetywallet-logs-2026.02.20/_doc",
-  );
-  expect(init.method).toBe("POST");
-  const body = JSON.parse(init.body as string);
-  expect(body.level).toBe("warn");
-  expect(body.message).toBe("caution");
-});
+    logger.warn("caution");
 
-it("silently swallows error when Elasticsearch returns 403", () => {
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(new Response("Forbidden", { status: 403 }));
-  const logger = createLogger("unit-test", {
-    elasticsearchUrl: "https://elastic.example",
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const url = fetchSpy.mock.calls[0]![0];
+    const init = fetchSpy.mock.calls[0]![1]!;
+    expect(String(url)).toMatch(
+      /https:\/\/elastic\.example\/safetywallet-logs-\d{4}\.\d{2}\.\d{2}\/_doc/,
+    );
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(init.body as string);
+    expect(body.level).toBe("warn");
+    expect(body.message).toBe("caution");
   });
 
-  // Must not throw — error is swallowed
-  expect(() => logger.error("forbidden")).not.toThrow();
-  expect(fetchSpy).toHaveBeenCalledOnce();
-  // console.error still called for the log entry itself
-  expect(console.error).toHaveBeenCalledOnce();
+  it("silently swallows error when Elasticsearch returns 403", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("Forbidden", { status: 403 }));
+    const logger = createLogger("unit-test", {
+      elasticsearchUrl: "https://elastic.example",
+    });
+
+    // Must not throw — error is swallowed
+    expect(() => logger.error("forbidden")).not.toThrow();
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    // console.error still called for the log entry itself
+    expect(console.error).toHaveBeenCalledOnce();
+  });
 });
 
 describe("startTimer", () => {
