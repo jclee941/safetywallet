@@ -1,188 +1,54 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Plus, Pin, Edit2, Trash2, Clock, Bot } from "lucide-react";
-import {
-  Button,
-  Card,
-  Input,
-  Badge,
-  toast,
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@safetywallet/ui";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import { Button, toast } from "@safetywallet/ui";
 import {
   useAdminAnnouncements,
   useCreateAnnouncement,
   useUpdateAnnouncement,
   useDeleteAnnouncement,
 } from "@/hooks/use-api";
-import { useGenerateAnnouncementDraft } from "@/hooks/use-announcement-ai-draft";
-import { useAuthStore } from "@/stores/auth";
-
-interface Announcement {
-  id: string;
-  title: string;
-  content: string;
-  isPinned: boolean;
-  scheduledAt: string | null;
-  status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
-  createdAt: string;
-}
-
-function renderAnnouncementHtml(content: string): ReactNode {
-  if (typeof DOMParser === "undefined") {
-    return content;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(content, "text/html");
-
-  const renderNode = (node: ChildNode, key: string): ReactNode => {
-    if (node.nodeType === 3) {
-      return node.textContent;
-    }
-
-    if (node.nodeType !== 1) {
-      return null;
-    }
-
-    const element = node as HTMLElement;
-    const children = Array.from(element.childNodes).map((child, index) =>
-      renderNode(child, `${key}-${index}`),
-    );
-
-    switch (element.tagName.toLowerCase()) {
-      case "h3":
-        return (
-          <h3
-            key={key}
-            className="mb-2 text-base font-semibold text-foreground"
-          >
-            {children}
-          </h3>
-        );
-      case "p":
-        return (
-          <p key={key} className="mb-2 leading-6">
-            {children}
-          </p>
-        );
-      case "ul":
-        return (
-          <ul key={key} className="mb-2 list-inside list-disc space-y-1">
-            {children}
-          </ul>
-        );
-      case "li":
-        return <li key={key}>{children}</li>;
-      case "strong":
-        return <strong key={key}>{children}</strong>;
-      case "br":
-        return <br key={key} />;
-      default:
-        return <span key={key}>{children}</span>;
-    }
-  };
-
-  return Array.from(doc.body.childNodes).map((node, index) =>
-    renderNode(node, `node-${index}`),
-  );
-}
+import {
+  AnnouncementCard,
+  type Announcement,
+} from "./components/announcement-card";
+import { AnnouncementForm } from "./components/announcement-form";
+import { DeleteConfirmDialog } from "./components/delete-confirm-dialog";
 
 export default function AnnouncementsPage() {
   const { data: announcements = [], isLoading } = useAdminAnnouncements();
   const createMutation = useCreateAnnouncement();
   const updateMutation = useUpdateAnnouncement();
   const deleteMutation = useDeleteAnnouncement();
-  const generateDraft = useGenerateAnnouncementDraft();
-  const currentSiteId = useAuthStore((state) => state.currentSiteId);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [isPinned, setIsPinned] = useState(false);
-  const [scheduledAt, setScheduledAt] = useState<string>("");
-  const [aiKeywords, setAiKeywords] = useState("");
-  const [showAiInput, setShowAiInput] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setTitle("");
-    setContent("");
-    setIsPinned(false);
-    setScheduledAt("");
-    setAiKeywords("");
-    setShowAiInput(false);
   };
 
-  const handleGenerateDraft = async () => {
-    if (!aiKeywords.trim() || !currentSiteId) {
-      return;
-    }
-
-    try {
-      const result = await generateDraft.mutateAsync({
-        keywords: aiKeywords,
-        siteId: currentSiteId,
-      });
-
-      setTitle(result.title);
-      setContent(result.content);
-      setShowAiInput(false);
-      setAiKeywords("");
-      toast({ description: "AI 초안이 생성되었습니다." });
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        description:
-          err instanceof Error ? err.message : "초안 생성에 실패했습니다.",
-      });
-    }
-  };
-
-  const handleSubmit = () => {
-    if (!title || !content) return;
-
+  const handleSubmit = (data: {
+    title: string;
+    content: string;
+    isPinned: boolean;
+    scheduledAt: string | null;
+  }) => {
     if (editingId) {
       updateMutation.mutate(
-        {
-          id: editingId,
-          title,
-          content,
-          isPinned,
-          scheduledAt: scheduledAt || null,
-        },
+        { id: editingId, ...data },
         { onSuccess: resetForm },
       );
     } else {
-      createMutation.mutate(
-        { title, content, isPinned, scheduledAt: scheduledAt || null },
-        { onSuccess: resetForm },
-      );
+      createMutation.mutate(data, { onSuccess: resetForm });
     }
   };
 
   const handleEdit = (announcement: Announcement) => {
     setEditingId(announcement.id);
-    setTitle(announcement.title);
-    setContent(announcement.content);
-    setIsPinned(announcement.isPinned);
-    setScheduledAt(
-      announcement.scheduledAt
-        ? new Date(announcement.scheduledAt).toISOString().slice(0, 16)
-        : "",
-    );
     setShowForm(true);
   };
 
@@ -231,111 +97,12 @@ export default function AnnouncementsPage() {
       </div>
 
       {showForm && (
-        <Card className="p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              {editingId ? "공지 수정" : "새 공지 작성"}
-            </h2>
-            {!editingId && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setShowAiInput((prev) => !prev)}
-                disabled={generateDraft.isPending}
-              >
-                <Bot className="h-4 w-4" />
-                AI 초안 생성
-              </Button>
-            )}
-          </div>
-          <div className="space-y-4">
-            {showAiInput && !editingId && (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="키워드 입력 (예: 하절기 안전, 폭염 대비, 작업 중지)"
-                  value={aiKeywords}
-                  onChange={(e) => setAiKeywords(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void handleGenerateDraft();
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  disabled={generateDraft.isPending || !aiKeywords.trim()}
-                  onClick={() => void handleGenerateDraft()}
-                >
-                  {generateDraft.isPending ? "생성 중..." : "생성"}
-                </Button>
-              </div>
-            )}
-            <Input
-              placeholder="제목"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <RichTextEditor
-              placeholder="내용"
-              content={content}
-              onChange={setContent}
-            />
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={isPinned}
-                onChange={(e) => setIsPinned(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm">상단 고정</span>
-            </label>
-            <div>
-              <label
-                htmlFor="announcement-scheduled-at"
-                className="mb-1 block text-sm font-medium"
-              >
-                예약 발행
-              </label>
-              <input
-                id="announcement-scheduled-at"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-              {scheduledAt && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  설정한 시간에 자동으로 발행됩니다.
-                  <button
-                    type="button"
-                    className="ml-2 text-destructive underline"
-                    onClick={() => setScheduledAt("")}
-                  >
-                    예약 취소
-                  </button>
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleSubmit}
-                disabled={
-                  !title ||
-                  !content ||
-                  createMutation.isPending ||
-                  updateMutation.isPending
-                }
-              >
-                {editingId ? "수정" : "등록"}
-              </Button>
-              <Button variant="outline" onClick={resetForm}>
-                취소
-              </Button>
-            </div>
-          </div>
-        </Card>
+        <AnnouncementForm
+          editingId={editingId}
+          onSubmit={handleSubmit}
+          onCancel={resetForm}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+        />
       )}
 
       {isLoading ? (
@@ -345,81 +112,22 @@ export default function AnnouncementsPage() {
       ) : (
         <div className="space-y-4">
           {sortedAnnouncements.map((announcement) => (
-            <Card key={announcement.id} className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="mb-2 flex items-center gap-2">
-                    {announcement.isPinned && (
-                      <Pin size={16} className="text-primary" />
-                    )}
-                    <h3 className="font-semibold break-words">
-                      {announcement.title}
-                    </h3>
-                    {announcement.isPinned && (
-                      <Badge variant="secondary">고정</Badge>
-                    )}
-                    {announcement.status === "SCHEDULED" && (
-                      <Badge variant="outline" className="gap-1">
-                        <Clock size={12} />
-                        예약
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="prose prose-sm max-w-none text-muted-foreground">
-                    {renderAnnouncementHtml(announcement.content)}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {new Date(announcement.createdAt).toLocaleString("ko-KR")}
-                    {announcement.scheduledAt && (
-                      <span className="ml-2">
-                        · 예약:{" "}
-                        {new Date(announcement.scheduledAt).toLocaleString(
-                          "ko-KR",
-                        )}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(announcement)}
-                  >
-                    <Edit2 size={16} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(announcement.id)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                </div>
-              </div>
-            </Card>
+            <AnnouncementCard
+              key={announcement.id}
+              announcement={announcement}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              isDeleting={deleteMutation.isPending}
+            />
           ))}
         </div>
       )}
 
-      <AlertDialog
+      <DeleteConfirmDialog
         open={!!deleteTargetId}
         onOpenChange={(open) => !open && setDeleteTargetId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>삭제 확인</AlertDialogTitle>
-            <AlertDialogDescription>
-              정말 삭제하시겠습니까?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>삭제</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

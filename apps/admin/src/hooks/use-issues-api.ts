@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./use-api-base";
 import type { IssueTemplate } from "@/app/issues/issue-template";
 
-interface GitHubIssue {
+export interface GitHubIssue {
   number: number;
   title: string;
   body: string;

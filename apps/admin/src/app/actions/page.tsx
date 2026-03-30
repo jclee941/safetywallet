@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Badge,
   Button,
-  Card,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -18,13 +17,9 @@ import { useActionItems } from "@/hooks/use-api";
 import { useActionImages } from "@/hooks/use-action-ai-analysis";
 import { ActionImageAiAnalysis } from "./components/action-image-ai-analysis";
 import { BeforeAfterComparisonCard } from "./components/before-after-comparison-card";
-import {
-  AlertTriangle,
-  Bot,
-  Clock,
-  CheckCircle,
-  ExternalLink,
-} from "lucide-react";
+import { ActionStatsCards } from "./components/action-stats-cards";
+import { ActionFilterTabs } from "./components/action-filter-tabs";
+import { AlertTriangle, Bot, ExternalLink } from "lucide-react";
 
 interface ActionItem {
   id: string;
@@ -66,14 +61,7 @@ type FilterStatus =
   | "VERIFIED"
   | "OVERDUE";
 
-const filterTabs: { label: string; value: FilterStatus }[] = [
-  { label: "전체", value: "" },
-  { label: "배정됨", value: "ASSIGNED" },
-  { label: "진행 중", value: "IN_PROGRESS" },
-  { label: "완료", value: "COMPLETED" },
-  { label: "확인됨", value: "VERIFIED" },
-  { label: "기한초과", value: "OVERDUE" },
-];
+const filterTabs: { label: string; value: FilterStatus }[] = []; // Moved to action-filter-tabs.tsx
 
 function isOverdue(item: ActionItem): boolean {
   if (
@@ -243,37 +231,11 @@ export default function ActionsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">조치 현황</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4 flex items-center gap-3">
-          <div className="rounded-full bg-red-100 p-2">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">기한 초과</p>
-            <p className="text-2xl font-bold text-red-600">{overdueCount}</p>
-          </div>
-        </Card>
-        <Card className="p-4 flex items-center gap-3">
-          <div className="rounded-full bg-blue-100 p-2">
-            <Clock className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">진행 중</p>
-            <p className="text-2xl font-bold">{inProgressCount}</p>
-          </div>
-        </Card>
-        <Card className="p-4 flex items-center gap-3">
-          <div className="rounded-full bg-green-100 p-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">완료</p>
-            <p className="text-2xl font-bold text-green-600">
-              {completedCount}
-            </p>
-          </div>
-        </Card>
-      </div>
+      <ActionStatsCards
+        overdueCount={overdueCount}
+        inProgressCount={inProgressCount}
+        completedCount={completedCount}
+      />
 
       {overdueCount > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
@@ -285,27 +247,18 @@ export default function ActionsPage() {
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto">
-        {filterTabs.map((tab) => (
-          <Button
-            key={tab.value || "all"}
-            type="button"
-            variant={filter === tab.value ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter(tab.value)}
-          >
-            {tab.label}
-            {tab.value === "" && ` (${allActions.length})`}
-            {tab.value === "ASSIGNED" &&
-              ` (${allActions.filter((a) => a.status === "ASSIGNED").length})`}
-            {tab.value === "IN_PROGRESS" && ` (${inProgressCount})`}
-            {tab.value === "COMPLETED" && ` (${completedCount})`}
-            {tab.value === "VERIFIED" && ` (${verifiedCount})`}
-            {tab.value === "OVERDUE" &&
-              ` (${allActions.filter((a) => a.status === "OVERDUE").length})`}
-          </Button>
-        ))}
-      </div>
+      <ActionFilterTabs
+        filter={filter}
+        onFilterChange={setFilter}
+        counts={{
+          all: allActions.length,
+          assigned: allActions.filter((a) => a.status === "ASSIGNED").length,
+          inProgress: inProgressCount,
+          completed: completedCount,
+          verified: verifiedCount,
+          overdue: allActions.filter((a) => a.status === "OVERDUE").length,
+        }}
+      />
 
       <DataTable
         columns={columns}
