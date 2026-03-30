@@ -3,7 +3,8 @@ import { authMiddleware } from "../../middleware/auth";
 import { rateLimitMiddleware } from "../../middleware/rate-limit";
 import { success, error } from "../../lib/response";
 import type { AppType } from "./helpers";
-import contentsRoute from "./contents";
+import { contentsCrud } from "./contents-routes";
+import { contentsAi } from "./contents-ai";
 import quizzesRoute from "./quizzes";
 import quizAttemptsRoute from "./quiz-attempts";
 import statutoryRoute from "./statutory";
@@ -56,7 +57,7 @@ app.get("/youtube-oembed", async (c) => {
     return success(c, {
       videoId,
       title: data.title,
-      thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      thumbnailUrl: `https://img.youtube.com/img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       authorName: data.author_name,
       html: data.html,
     });
@@ -65,7 +66,8 @@ app.get("/youtube-oembed", async (c) => {
   }
 });
 
-app.route("/contents", contentsRoute);
+app.route("/contents", contentsCrud);
+app.route("/contents", contentsAi);
 app.route("/quizzes", quizzesRoute);
 app.route("/quizzes", quizAttemptsRoute);
 app.route("/statutory", statutoryRoute);
