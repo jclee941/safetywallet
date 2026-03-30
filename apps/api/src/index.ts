@@ -412,7 +412,10 @@ app.all("*", async (c) => {
     return response;
   } catch (err) {
     logger.error("Static serve error", {
-      error: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack }
+          : { name: "UnknownError", message: String(err) },
       hostname: url.hostname,
     });
     return error(c, "INTERNAL_ERROR", "Internal Server Error", 500);
@@ -423,6 +426,7 @@ app.onError((err, c) => {
   const log = createLogger("onError", {
     elasticsearchUrl: c.env.ELASTICSEARCH_URL,
     elasticsearchIndexPrefix: c.env.ELASTICSEARCH_INDEX_PREFIX,
+    elasticsearchApiKey: c.env.ELASTICSEARCH_API_KEY,
     waitUntil: (p) => c.executionCtx.waitUntil(p),
   });
 

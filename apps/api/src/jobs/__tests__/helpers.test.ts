@@ -328,6 +328,97 @@ describe("scheduled helpers", () => {
         ),
       ).rejects.toThrow("ELK ingest failed with status 500");
     });
+
+    it("includes Authorization header when ELASTICSEARCH_API_KEY is set", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 201 }));
+
+      await emitSyncFailureToElk(
+        {
+          ELASTICSEARCH_URL: "https://elastic.example",
+          ELASTICSEARCH_API_KEY: "test-key-123",
+        } as Env,
+        {
+          timestamp: "2026-02-20T02:03:04.567Z",
+          correlationId: "corr-auth",
+          syncType: "FAS_WORKER",
+          errorCode: "FULL_SYNC_FAILED",
+          errorMessage: "boom",
+          lockName: "fas-full",
+        },
+      );
+
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      const [, init] = fetchSpy.mock.calls[0]!;
+      expect(init.headers["Authorization"]).toBe("ApiKey test-key-123");
+    });
+
+    it("omits Authorization header when ELASTICSEARCH_API_KEY is absent", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 201 }));
+
+      await emitSyncFailureToElk(
+        { ELASTICSEARCH_URL: "https://elastic.example" } as Env,
+        {
+          timestamp: "2026-02-20T02:03:04.567Z",
+          correlationId: "corr-noauth",
+          syncType: "FAS_WORKER",
+          errorCode: "FULL_SYNC_FAILED",
+          errorMessage: "boom",
+          lockName: "fas-full",
+        },
+      );
+
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      const [, init] = fetchSpy.mock.calls[0]!;
+      expect(init.headers["Authorization"]).toBeUndefined();
+    });
+
+    it("retries on 403 and throws after exhausting retries", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("Forbidden", { status: 403 }),
+      );
+
+      await expect(
+        emitSyncFailureToElk(
+          { ELASTICSEARCH_URL: "https://elastic.example" } as Env,
+          {
+            timestamp: "2026-02-20T02:03:04.567Z",
+            correlationId: "corr-403",
+            syncType: "FAS_WORKER",
+            errorCode: "FULL_SYNC_FAILED",
+            errorMessage: "boom",
+            lockName: "fas-full",
+          },
+        ),
+      ).rejects.toThrow("ELK ingest failed with status 403");
+
+      // 1 initial + 2 retries = 3 total calls
+      expect(vi.spyOn(globalThis, "fetch")).toHaveBeenCalledTimes(3);
+    });
+
+    it("succeeds on retry after initial 403", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(new Response("Forbidden", { status: 403 }))
+        .mockResolvedValueOnce(new Response(null, { status: 201 }));
+
+      await emitSyncFailureToElk(
+        { ELASTICSEARCH_URL: "https://elastic.example" } as Env,
+        {
+          timestamp: "2026-02-20T02:03:04.567Z",
+          correlationId: "corr-403-retry",
+          syncType: "FAS_WORKER",
+          errorCode: "FULL_SYNC_FAILED",
+          errorMessage: "boom",
+          lockName: "fas-full",
+        },
+      );
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("array/constants helpers", () => {

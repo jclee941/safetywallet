@@ -139,6 +139,7 @@ export interface Logger {
 export interface LoggerOptions {
   elasticsearchUrl?: string;
   elasticsearchIndexPrefix?: string;
+  elasticsearchApiKey?: string;
   waitUntil?: (promise: Promise<unknown>) => void;
 }
 

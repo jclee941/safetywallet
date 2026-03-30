@@ -52,6 +52,7 @@ export interface Env {
   ANALYTICS?: AnalyticsEngineDataset;
   ELASTICSEARCH_URL?: string;
   ELASTICSEARCH_INDEX_PREFIX?: string;
+  ELASTICSEARCH_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
   NOTIFICATION_QUEUE?: Queue;
   AI?: Ai;

@@ -241,6 +241,59 @@ describe("createLogger", () => {
     expect(waitUntil).toHaveBeenCalledOnce();
   });
 });
+it("does not include Authorization header when shipping to Elasticsearch", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const fetchSpy = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response(null, { status: 201 }));
+  const logger = createLogger("unit-test", {
+    elasticsearchUrl: "https://elastic.example",
+  });
+
+  logger.error("no-auth-test");
+
+  expect(fetchSpy).toHaveBeenCalledOnce();
+  const [, init] = fetchSpy.mock.calls[0]!;
+  expect(init.headers["Authorization"]).toBeUndefined();
+});
+
+it("ships warn logs to Elasticsearch", () => {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const fetchSpy = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response(null, { status: 201 }));
+  const logger = createLogger("unit-test", {
+    elasticsearchUrl: "https://elastic.example",
+  });
+
+  logger.warn("caution");
+
+  expect(fetchSpy).toHaveBeenCalledOnce();
+  const [url, init] = fetchSpy.mock.calls[0]!;
+  expect(String(url)).toBe(
+    "https://elastic.example/safetywallet-logs-2026.02.20/_doc",
+  );
+  expect(init.method).toBe("POST");
+  const body = JSON.parse(init.body as string);
+  expect(body.level).toBe("warn");
+  expect(body.message).toBe("caution");
+});
+
+it("silently swallows error when Elasticsearch returns 403", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const fetchSpy = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response("Forbidden", { status: 403 }));
+  const logger = createLogger("unit-test", {
+    elasticsearchUrl: "https://elastic.example",
+  });
+
+  // Must not throw — error is swallowed
+  expect(() => logger.error("forbidden")).not.toThrow();
+  expect(fetchSpy).toHaveBeenCalledOnce();
+  // console.error still called for the log entry itself
+  expect(console.error).toHaveBeenCalledOnce();
+});
 
 describe("startTimer", () => {
   beforeEach(() => {

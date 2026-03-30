@@ -1,0 +1,104 @@
+{
+  "index_patterns": ["safetywallet-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "safetywallet-logs-ilm",
+      "index.lifecycle.rollover_alias": "safetywallet-logs",
+      "index.mapping.total_fields.limit": 1000
+    },
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+        "@timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "level": {
+          "type": "keyword"
+        },
+        "module": {
+          "type": "keyword"
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 32766
+            }
+          }
+        },
+        "msg": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 32766
+            }
+          }
+        },
+        "userId": {
+          "type": "keyword"
+        },
+        "siteId": {
+          "type": "keyword"
+        },
+        "action": {
+          "type": "keyword"
+        },
+        "endpoint": {
+          "type": "keyword"
+        },
+        "method": {
+          "type": "keyword"
+        },
+        "statusCode": {
+          "type": "integer"
+        },
+        "duration": {
+          "type": "integer"
+        },
+        "error": {
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "message": {
+              "type": "text",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 32766
+                }
+              }
+            },
+            "stack": {
+              "type": "text",
+              "index": false
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "enabled": true,
+          "dynamic": true
+        }
+      }
+    }
+  },
+  "priority": 500,
+  "version": 1,
+  "_meta": {
+    "description": "Index template for SafetyWallet application logs",
+    "created": "2026-03-30"
+  }
+}

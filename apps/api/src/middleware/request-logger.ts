@@ -15,6 +15,7 @@ export async function requestLoggerMiddleware(
   const log = createLogger("request", {
     elasticsearchUrl: c.env.ELASTICSEARCH_URL,
     elasticsearchIndexPrefix: c.env.ELASTICSEARCH_INDEX_PREFIX,
+    elasticsearchApiKey: c.env.ELASTICSEARCH_API_KEY,
     waitUntil: (p) => c.executionCtx.waitUntil(p),
   });
 

@@ -36,6 +36,7 @@ function makeEnv(): Env {
     ENVIRONMENT: "test",
     ELASTICSEARCH_URL: "http://localhost:9200",
     ELASTICSEARCH_INDEX_PREFIX: "safetywallet-logs",
+    ELASTICSEARCH_API_KEY: "test-api-key",
   } as unknown as Env;
 }
 
@@ -57,6 +58,7 @@ describe("requestLoggerMiddleware", () => {
       expect.objectContaining({
         elasticsearchUrl: "http://localhost:9200",
         elasticsearchIndexPrefix: "safetywallet-logs",
+        elasticsearchApiKey: "test-api-key",
       }),
     );
   });
