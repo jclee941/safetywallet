@@ -13,7 +13,8 @@ import {
 import { success, error } from "../../lib/response";
 import { logAuditWithContext } from "../../lib/audit";
 import type { AppType, SubmitQuizAttemptBody } from "./helpers";
-import { SubmitQuizAttemptRequestSchema, isQuizAnswerCorrect } from "./helpers";
+import { SubmitQuizAttemptRequestSchema } from "./helpers";
+import { isQuizAnswerCorrect } from "./quiz-answer-utils";
 
 const app = new Hono<AppType>();
 

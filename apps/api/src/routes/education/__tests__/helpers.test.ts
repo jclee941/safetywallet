@@ -3,9 +3,11 @@ import {
   parseMultiChoiceAnswers,
   normalizeTextAnswer,
   isQuizAnswerCorrect,
+} from "../quiz-answer-utils";
+import {
   validateCreateQuizQuestion,
   validateUpdateQuizQuestion,
-} from "../helpers";
+} from "../quiz-question-validators";
 
 describe("education/helpers", () => {
   describe("parseMultiChoiceAnswers", () => {

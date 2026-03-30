@@ -21,9 +21,11 @@ import type {
 import {
   CreateQuizQuestionRequestSchema,
   UpdateQuizQuestionRequestSchema,
+} from "./helpers";
+import {
   validateCreateQuizQuestion,
   validateUpdateQuizQuestion,
-} from "./helpers";
+} from "./quiz-question-validators";
 
 const app = new Hono<AppType>();
 
