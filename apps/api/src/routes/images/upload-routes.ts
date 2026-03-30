@@ -1,29 +1,21 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import { and, desc, eq, gte } from "drizzle-orm";
-import type { Env, AuthContext } from "../types";
-import { authMiddleware } from "../middleware/auth";
-import { rateLimitMiddleware } from "../middleware/rate-limit";
-import { success, error } from "../lib/response";
-import { processImageForPrivacy, isJpegImage } from "../lib/image-privacy";
-import { computeImageHash, hammingDistance } from "../lib/phash";
-import { log, startTimer } from "../lib/observability";
-import { trackEvent } from "../middleware/analytics";
-import { postImages, posts, siteMemberships } from "../db/schema";
+import type { Env, AuthContext } from "../../types";
+import { rateLimitMiddleware } from "../../middleware/rate-limit";
+import { success, error } from "../../lib/response";
+import { processImageForPrivacy, isJpegImage } from "../../lib/image-privacy";
+import { computeImageHash, hammingDistance } from "../../lib/phash";
+import { log, startTimer } from "../../lib/observability";
+import { trackEvent } from "../../middleware/analytics";
+import { postImages, posts, siteMemberships } from "../../db/schema";
 import {
   classifyHazard,
   detectObjects,
   filterPersonDetections,
-} from "../lib/workers-ai";
-import { blurPersonRegions } from "../lib/face-blur";
-import { analyzeHazardImage, getAiCredentials } from "../lib/gemini-ai";
-
-const app = new Hono<{
-  Bindings: Env;
-  Variables: { auth: AuthContext };
-}>();
-
-app.use("*", authMiddleware);
+} from "../../lib/workers-ai";
+import { blurPersonRegions } from "../../lib/face-blur";
+import { analyzeHazardImage, getAiCredentials } from "../../lib/gemini-ai";
 
 const uploadRateLimit = rateLimitMiddleware({
   maxRequests: 20,
@@ -32,6 +24,11 @@ const uploadRateLimit = rateLimitMiddleware({
 
 const DUPLICATE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DUPLICATE_HAMMING_THRESHOLD = 5;
+
+const app = new Hono<{
+  Bindings: Env;
+  Variables: { auth: AuthContext };
+}>();
 
 /**
  * Upload image with automatic EXIF stripping for privacy
@@ -363,49 +360,6 @@ app.post("/upload", uploadRateLimit, async (c) => {
     timer.end("image_upload_failed", { userId: user.id });
 
     return error(c, "UPLOAD_FAILED", "Failed to upload image", 500);
-  }
-});
-
-/**
- * Retrieve image with privacy metadata
- *
- * GET /api/images/info/:filename
- *
- * Returns:
- *   - filename: Image filename
- *   - url: Public URL
- *   - metadata: Privacy processing metadata from R2
- */
-app.get("/info/:filename{.+}", async (c) => {
-  const { user } = c.get("auth");
-  const filename = c.req.param("filename");
-
-  try {
-    const object = await c.env.R2.head(filename);
-
-    if (!object) {
-      return error(c, "NOT_FOUND", "Image not found", 404);
-    }
-
-    return success(c, {
-      filename,
-      url: `/r2/${filename}`,
-      size: object.size,
-      contentType: object.httpMetadata?.contentType,
-      uploadedAt: object.customMetadata?.["uploaded-at"],
-      uploadedBy: object.customMetadata?.["uploaded-by"],
-      privacyProcessed: object.customMetadata?.["privacy-processed"] === "true",
-      exifStripped: object.customMetadata?.["exif-stripped"] === "true",
-      metadata: object.customMetadata,
-    });
-  } catch (err) {
-    log.error("Failed to retrieve image info", err, {
-      action: "image_info_failed",
-      userId: user.id,
-      metadata: { filename },
-    });
-
-    return error(c, "FETCH_FAILED", "Failed to retrieve image info", 500);
   }
 });
 
