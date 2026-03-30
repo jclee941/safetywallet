@@ -67,6 +67,9 @@ export interface Env {
   OPENROUTER_MODEL_MULTIMODAL?: string;
   OPENROUTER_SITE_URL?: string;
   OPENROUTER_APP_NAME?: string;
+  // Cloudflare Turnstile bot protection
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET?: string;
 }
 
 export interface User {

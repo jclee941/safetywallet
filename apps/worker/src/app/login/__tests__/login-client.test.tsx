@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LoginClient from "@/app/login/login-client";
 import { useAuth } from "@/hooks/use-auth";
@@ -6,6 +12,15 @@ import { useAuth } from "@/hooks/use-auth";
 vi.mock("@/hooks/use-auth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/use-translation", () => ({
   useTranslation: () => (key: string) => key,
+}));
+
+let turnstileRef: Record<string, unknown> = {};
+
+vi.mock("@marsidev/react-turnstile", () => ({
+  Turnstile: vi.fn((props: Record<string, unknown>) => {
+    turnstileRef = props;
+    return null;
+  }),
 }));
 
 describe("app/login/login-client", () => {
@@ -27,6 +42,8 @@ describe("app/login/login-client", () => {
       user: null,
     });
     vi.stubGlobal("fetch", vi.fn());
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "test-site-key";
+    turnstileRef = {};
   });
 
   const fillValidForm = () => {
@@ -38,6 +55,11 @@ describe("app/login/login-client", () => {
     });
     fireEvent.change(screen.getByLabelText("auth.dateOfBirth"), {
       target: { value: "900101" },
+    });
+    act(() => {
+      (turnstileRef.onSuccess as (token: string) => void)?.(
+        "mock-turnstile-token",
+      );
     });
   };
 
@@ -89,6 +111,11 @@ describe("app/login/login-client", () => {
     });
     fireEvent.change(screen.getByLabelText("auth.dateOfBirth"), {
       target: { value: "900101" },
+    });
+    act(() => {
+      (turnstileRef.onSuccess as (token: string) => void)?.(
+        "mock-turnstile-token",
+      );
     });
 
     expect(button).toBeEnabled();
@@ -201,6 +228,11 @@ describe("app/login/login-client", () => {
     });
     fireEvent.change(screen.getByLabelText("auth.dateOfBirth"), {
       target: { value: "90-01-01" },
+    });
+    act(() => {
+      (turnstileRef.onSuccess as (token: string) => void)?.(
+        "mock-turnstile-token",
+      );
     });
 
     expect(button).toBeEnabled();
@@ -438,6 +470,88 @@ describe("app/login/login-client", () => {
     fireEvent.click(screen.getByRole("button", { name: "auth.login" }));
     await waitFor(() => {
       expect(screen.getByText("auth.success.loginFailed")).toBeInTheDocument();
+    });
+  });
+
+  describe("Turnstile integration", () => {
+    it("renders Turnstile widget with configured site key", () => {
+      render(<LoginClient />);
+      expect(turnstileRef.siteKey).toBe("test-site-key");
+    });
+
+    it("passes empty siteKey when env var is not set", () => {
+      delete process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+      render(<LoginClient />);
+      expect(turnstileRef.siteKey).toBe("");
+    });
+
+    it("disables submit button until Turnstile token is received", () => {
+      render(<LoginClient />);
+
+      fireEvent.change(screen.getByLabelText("auth.phoneNumber"), {
+        target: { value: "01012345678" },
+      });
+      fireEvent.change(screen.getByLabelText("auth.name"), {
+        target: { value: "홍길동" },
+      });
+      fireEvent.change(screen.getByLabelText("auth.dateOfBirth"), {
+        target: { value: "900101" },
+      });
+
+      const button = screen.getByRole("button", { name: "auth.login" });
+      expect(button).toBeDisabled();
+
+      act(() => {
+        (turnstileRef.onSuccess as (token: string) => void)?.("mock-token");
+      });
+
+      expect(button).toBeEnabled();
+    });
+
+    it("includes turnstile token in login request body", async () => {
+      const fetchMock = vi.mocked(fetch);
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: {
+              user: { id: "u1", name: "홍길동" },
+              accessToken: "at",
+              refreshToken: "rt",
+            },
+          }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { siteId: "site-1" } }),
+        } as Response);
+
+      render(<LoginClient />);
+      fillValidForm();
+      fireEvent.click(screen.getByRole("button", { name: "auth.login" }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining("/auth/login"),
+          expect.objectContaining({
+            body: expect.stringContaining("mock-turnstile-token"),
+          }),
+        );
+      });
+    });
+
+    it("disables submit when Turnstile token expires", () => {
+      render(<LoginClient />);
+      fillValidForm();
+
+      const button = screen.getByRole("button", { name: "auth.login" });
+      expect(button).toBeEnabled();
+
+      act(() => {
+        (turnstileRef.onExpire as () => void)?.();
+      });
+
+      expect(button).toBeDisabled();
     });
   });
 });

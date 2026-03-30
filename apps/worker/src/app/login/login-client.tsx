@@ -10,6 +10,7 @@ import type {
   MeResponseDto,
 } from "@safetywallet/types";
 import { HardHat } from "lucide-react";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 const ERROR_CODES: Record<string, string> = {
   USER_NOT_FOUND: "auth.error.accountNotFound",
@@ -17,6 +18,8 @@ const ERROR_CODES: Record<string, string> = {
   ATTENDANCE_NOT_VERIFIED: "auth.error.accountLocked",
   ACCOUNT_LOCKED: "auth.error.accountLocked",
   RATE_LIMIT_EXCEEDED: "auth.error.tooManyAttempts",
+  TURNSTILE_REQUIRED: "auth.error.turnstileRequired",
+  TURNSTILE_FAILED: "auth.error.turnstileFailed",
 };
 
 function parseErrorMessage(err: unknown, t: (key: string) => string): string {
@@ -31,7 +34,11 @@ function parseErrorMessage(err: unknown, t: (key: string) => string): string {
           ? "ACCOUNT_LOCKED"
           : rawCode === "tooManyAttempts"
             ? "RATE_LIMIT_EXCEEDED"
-            : rawCode;
+            : rawCode === "turnstileRequired"
+              ? "TURNSTILE_REQUIRED"
+              : rawCode === "turnstileFailed"
+                ? "TURNSTILE_FAILED"
+                : rawCode;
       if (code && ERROR_CODES[code]) {
         switch (ERROR_CODES[code]) {
           case "auth.error.accountNotFound":
@@ -42,6 +49,10 @@ function parseErrorMessage(err: unknown, t: (key: string) => string): string {
             return t("auth.error.accountLocked");
           case "auth.error.tooManyAttempts":
             return t("auth.error.tooManyAttempts");
+          case "auth.error.turnstileRequired":
+            return t("auth.error.turnstileRequired");
+          case "auth.error.turnstileFailed":
+            return t("auth.error.turnstileFailed");
           default:
             return t("auth.success.loginFailed");
         }
@@ -65,6 +76,8 @@ export default function LoginClient() {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [dob, setDob] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
   useEffect(() => {
@@ -86,6 +99,7 @@ export default function LoginClient() {
           name: name.trim(),
           phone: phone.trim(),
           dob: dob.trim(),
+          turnstileToken,
         }),
       });
       if (!loginResponse.ok) {
@@ -127,7 +141,11 @@ export default function LoginClient() {
   const dobClean = dob.trim().replace(/-/g, "");
   const isPhoneValid = /^\d{10,11}$/.test(phoneClean);
   const isDobValid = /^\d{6,8}$/.test(dobClean);
-  const isFormValid = isPhoneValid && name.trim().length > 0 && isDobValid;
+  const isFormValid =
+    isPhoneValid &&
+    name.trim().length > 0 &&
+    isDobValid &&
+    turnstileToken.length > 0;
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#d8f0ff] px-6 py-10 text-[#123c7c] overflow-hidden">
@@ -222,6 +240,17 @@ export default function LoginClient() {
               {error}
             </p>
           )}
+
+          <Turnstile
+            siteKey={turnstileSiteKey}
+            onSuccess={setTurnstileToken}
+            onExpire={() => setTurnstileToken("")}
+            options={{
+              theme: "light",
+              size: "normal",
+            }}
+            className="flex justify-center py-2"
+          />
 
           <Button
             type="submit"

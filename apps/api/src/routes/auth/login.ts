@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { authRateLimitMiddleware } from "../../middleware/rate-limit";
+import { turnstileMiddleware } from "../../middleware/turnstile";
 import { AdminLoginSchema, LoginSchema } from "../../validators/schemas";
 import type { AuthContext, Env } from "../../types";
 import { handleAdminLogin } from "./login-admin";
@@ -14,6 +15,7 @@ const loginRoute = new Hono<{
 loginRoute.post(
   "/login",
   authRateLimitMiddleware(),
+  turnstileMiddleware(),
   zValidator("json", LoginSchema),
   async (c) => {
     const body = (() => {

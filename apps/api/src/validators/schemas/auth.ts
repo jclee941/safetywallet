@@ -17,12 +17,14 @@ export const RegisterSchema = z.object({
       "DOB must be 6 or 8 digits",
     ),
   deviceId: z.string().optional(),
+  turnstileToken: z.string().optional(),
 });
 
 export const LoginSchema = z.object({
   name: nonEmptyStr,
   phone: z.string().min(1),
   dob: z.string().min(1),
+  turnstileToken: z.string().optional(),
 });
 
 export const AcetimeLoginSchema = z.object({

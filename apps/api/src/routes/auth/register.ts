@@ -11,6 +11,7 @@ import {
   recordDeviceRegistration,
 } from "../../lib/device-registrations";
 import { authRateLimitMiddleware } from "../../middleware/rate-limit";
+import { turnstileMiddleware } from "../../middleware/turnstile";
 import { maskName } from "../../utils/common";
 import { RegisterSchema } from "../../validators/schemas";
 import type { Env, AuthContext } from "../../types";
@@ -32,6 +33,7 @@ const registerRoute = new Hono<{
 registerRoute.post(
   "/register",
   authRateLimitMiddleware(),
+  turnstileMiddleware(),
   zValidator("json", RegisterSchema),
   async (c) => {
     const body = (() => {

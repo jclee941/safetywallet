@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.5.0",
     "@safetywallet/types": "*",
     "@safetywallet/ui": "*",
     "@tanstack/react-query": "^5.90.21",
