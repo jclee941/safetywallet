@@ -267,11 +267,12 @@ deploy-verify:
       echo "Waiting for deployment to propagate..."
       sleep 30
     - |
-      export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CLOUDFLARE_API_TOKEN_WORKER:-${CLOUDFLARE_API_TOKEN_ADMIN:-${CLOUDFLARE_API_TOKEN_PURGE:-${CF_API_TOKEN:-}}}}}}"
-      if [ -n "$ADMIN_TOKEN" ]; then
+      export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CLOUDFLARE_API_TOKEN_WORKER:-${CLOUDFLARE_API_TOKEN_ADMIN:-${CLOUDFLARE_API_TOKEN_PURGE:-${CF_API_TOKEN:-}}}}}"
+      export TURNSTILE_SECRET="${TURNSTILE_SECRET:-${TURNSTILE_SECRET_KEY:-}}"
+      if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
         ./scripts/deploy-verify --api https://safetywallet.jclee.me --retries 5
       else
-        echo "Error: ADMIN_TOKEN not set, deployment verification requires admin access"
+        echo "Error: CLOUDFLARE_API_TOKEN not set, deployment verification requires Cloudflare API access"
         exit 1
       fi
   rules:

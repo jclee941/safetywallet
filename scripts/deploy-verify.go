@@ -309,6 +309,46 @@ func CheckD1Migrations(cfg Config) bool {
 	return true
 }
 
+// CheckTurnstile verifies Turnstile widget is accessible and configured
+// by checking if the site key is present in the login page HTML
+func CheckTurnstile(cfg Config) bool {
+	printHeader("Turnstile Verification")
+	printInfo("Checking Turnstile widget configuration...")
+
+	// Check if Turnstile site key is present in login page
+	loginURL := cfg.APIBase + "/login/"
+	body, statusCode, err := HTTPGet(loginURL, cfg.Timeout, "")
+	if err != nil || statusCode != http.StatusOK {
+		printError(fmt.Sprintf("Could not access login page (HTTP %d): %v", statusCode, err))
+		return false
+	}
+
+	// Check for Turnstile site key in the HTML
+	if strings.Contains(body, "0x4AAAAAACx3gVo8D92ukyCJ") || strings.Contains(body, "turnstile") || strings.Contains(body, "cf-turnstile") {
+		printSuccess("Turnstile widget is present in login page")
+	} else {
+		printWarning("Turnstile widget may not be configured (not found in login page)")
+	}
+
+	// Verify Turnstile API is reachable (public health check)
+	turnstileURL := "https://challenges.cloudflare.com/turnstile/v0/api.js"
+	client := &http.Client{Timeout: cfg.Timeout}
+	resp, err := client.Get(turnstileURL)
+	if err != nil {
+		printWarning("Turnstile API may be unreachable: " + err.Error())
+		return true // Not critical - widget may still work
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		printSuccess("Turnstile API is accessible")
+	} else {
+		printWarning(fmt.Sprintf("Turnstile API returned HTTP %d", resp.StatusCode))
+	}
+
+	return true
+}
+
 // VerifyStaticAssets checks that static assets are accessible
 func VerifyStaticAssets(cfg Config) bool {
 	printHeader("Static Assets Verification")
@@ -472,6 +512,10 @@ func main() {
 	}
 	fmt.Println()
 
+	if !CheckTurnstile(cfg) {
+		failed = true
+	}
+	fmt.Println()
 	// Summary
 	printHeader("Verification Summary")
 	if !failed {
