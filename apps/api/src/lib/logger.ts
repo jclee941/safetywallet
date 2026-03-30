@@ -109,11 +109,18 @@ function shipToElasticsearch(
   entry: LogEntry,
   elasticsearchUrl: string,
   indexPrefix: string,
+  elasticsearchApiKey?: string,
 ): Promise<void> {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (elasticsearchApiKey) {
+    headers["Authorization"] = `ApiKey ${elasticsearchApiKey}`;
+  }
   return fetch(`${elasticsearchUrl}/${indexPrefix}-${date}/_doc`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       ...entry,
       msg: entry.message,
@@ -158,6 +165,7 @@ export function createLogger(module: string, options?: LoggerOptions): Logger {
           options.elasticsearchUrl,
           options.elasticsearchIndexPrefix ??
             DEFAULT_ELASTICSEARCH_INDEX_PREFIX,
+          options.elasticsearchApiKey,
         );
         if (options.waitUntil) {
           options.waitUntil(p);
@@ -217,6 +225,7 @@ export function createLogger(module: string, options?: LoggerOptions): Logger {
         entry,
         options.elasticsearchUrl,
         options.elasticsearchIndexPrefix ?? DEFAULT_ELASTICSEARCH_INDEX_PREFIX,
+        options.elasticsearchApiKey,
       );
       if (options.waitUntil) {
         options.waitUntil(p);

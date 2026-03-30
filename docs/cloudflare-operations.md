@@ -29,6 +29,7 @@ Optional scoped tokens and cache purge settings used by production workflow:
 - `DEPLOY_MONITOR_WEBHOOK_URL` (optional legacy alias; monitoring and notification fallback)
 - `ELASTICSEARCH_URL` (required production secret for ELK shipping; deploy fails fast when missing)
 - `ELASTICSEARCH_INDEX_PREFIX` (optional plain env var; defaults to `safewallet-logs`)
+- `ELASTICSEARCH_API_KEY` (required Workers secret for ELK API authentication; set via `wrangler secret put ELASTICSEARCH_API_KEY`)
 
 Production workflow uses fallback resolution per target:
 

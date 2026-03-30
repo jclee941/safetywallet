@@ -350,8 +350,10 @@ describe("scheduled helpers", () => {
       );
 
       expect(fetchSpy).toHaveBeenCalledOnce();
-      const [, init] = fetchSpy.mock.calls[0]!;
-      expect(init.headers["Authorization"]).toBe("ApiKey test-key-123");
+      const init = fetchSpy.mock.calls[0]![1]!;
+      expect(
+        (init.headers as Record<string, string> | undefined)?.["Authorization"],
+      ).toBe("ApiKey test-key-123");
     });
 
     it("omits Authorization header when ELASTICSEARCH_API_KEY is absent", async () => {
@@ -372,8 +374,10 @@ describe("scheduled helpers", () => {
       );
 
       expect(fetchSpy).toHaveBeenCalledOnce();
-      const [, init] = fetchSpy.mock.calls[0]!;
-      expect(init.headers["Authorization"]).toBeUndefined();
+      const init = fetchSpy.mock.calls[0]![1]!;
+      expect(
+        (init.headers as Record<string, string> | undefined)?.["Authorization"],
+      ).toBeUndefined();
     });
 
     it("retries on 403 and throws after exhausting retries", async () => {

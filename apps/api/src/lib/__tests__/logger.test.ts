@@ -253,8 +253,29 @@ it("does not include Authorization header when shipping to Elasticsearch", () =>
   logger.error("no-auth-test");
 
   expect(fetchSpy).toHaveBeenCalledOnce();
-  const [, init] = fetchSpy.mock.calls[0]!;
-  expect(init.headers["Authorization"]).toBeUndefined();
+  const init = fetchSpy.mock.calls[0]![1]!;
+  expect(
+    (init.headers as Record<string, string> | undefined)?.["Authorization"],
+  ).toBeUndefined();
+});
+
+it("includes Authorization header when Elasticsearch API key is provided", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const fetchSpy = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response(null, { status: 201 }));
+  const logger = createLogger("unit-test", {
+    elasticsearchUrl: "https://elastic.example",
+    elasticsearchApiKey: "test-api-key-12345",
+  });
+
+  logger.error("auth-test");
+
+  expect(fetchSpy).toHaveBeenCalledOnce();
+  const init = fetchSpy.mock.calls[0]![1]!;
+  expect(
+    (init.headers as Record<string, string> | undefined)?.["Authorization"],
+  ).toBe("ApiKey test-api-key-12345");
 });
 
 it("ships warn logs to Elasticsearch", () => {
@@ -269,7 +290,8 @@ it("ships warn logs to Elasticsearch", () => {
   logger.warn("caution");
 
   expect(fetchSpy).toHaveBeenCalledOnce();
-  const [url, init] = fetchSpy.mock.calls[0]!;
+  const url = fetchSpy.mock.calls[0]![0];
+  const init = fetchSpy.mock.calls[0]![1]!;
   expect(String(url)).toBe(
     "https://elastic.example/safetywallet-logs-2026.02.20/_doc",
   );
