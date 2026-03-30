@@ -20,6 +20,9 @@ VAPID_SUBJECT = "mailto:admin@safetywallet.jclee.me"
 FAS_DB_NAME = "mdidev"
 FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
+TURNSTILE_SITE_KEY = "0x4AAAAAACx3gVo8D92ukyCJ"
+
+# Required secrets
 
 # Required secrets — use .dev.vars for local dev, `wrangler secret put <NAME>` for production:
 #   JWT_SECRET / HMAC_SECRET / ENCRYPTION_KEY / ALERT_WEBHOOK_URL / FAS_SYNC_SECRET / ELASTICSEARCH_URL / ELASTICSEARCH_API_KEY
@@ -94,14 +97,21 @@ head_sampling_rate = 1
 
 # Durable Objects for rate limiting
 [durable_objects]
-bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }, { name = "JOB_SCHEDULER", class_name = "JobScheduler" }]
+bindings = [
+  { name = "RATE_LIMITER", class_name = "RateLimiter" },
+  { name = "JOB_SCHEDULER", class_name = "JobScheduler" },
+]
+
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["RateLimiter", "JobScheduler"]
+new_sqlite_classes = ["RateLimiter"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["JobScheduler"]
 
 
-# Development Environment
 [env.dev]
 name = "safetywallet-dev"
 
@@ -116,7 +126,14 @@ VAPID_SUBJECT = "mailto:admin@safetywallet.jclee.me"
 FAS_DB_NAME = "mdidev"
 FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
+HP|
+[assets]
+directory = "../../dist"
+binding = "ASSETS"
+not_found_handling = "none"
+run_worker_first = true
 
+# Required secrets
 # Required secrets — use .dev.vars for local dev, `wrangler secret put <NAME> --env dev` for staging:
 #   JWT_SECRET / HMAC_SECRET / ENCRYPTION_KEY / ALERT_WEBHOOK_URL / FAS_SYNC_SECRET / ELASTICSEARCH_URL / ELASTICSEARCH_API_KEY
 
@@ -159,7 +176,10 @@ enabled = true
 head_sampling_rate = 1
 
 [env.dev.durable_objects]
-bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }, { name = "JOB_SCHEDULER", class_name = "JobScheduler" }]
+bindings = [
+  { name = "RATE_LIMITER", class_name = "RateLimiter" },
+  { name = "JOB_SCHEDULER", class_name = "JobScheduler" },
+]
 
 [[env.dev.queues.producers]]
 queue = "safetywallet-notifications"
