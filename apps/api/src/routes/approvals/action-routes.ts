@@ -2,120 +2,19 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, desc, gte, lt } from "drizzle-orm";
-import * as schema from "../db/schema";
-import { authMiddleware } from "../middleware/auth";
-import { rateLimitMiddleware } from "../middleware/rate-limit";
-import { success, error } from "../lib/response";
-import type { Env, AuthContext } from "../types";
-import { logAuditWithContext } from "../lib/audit";
+import { eq, and, gte, lt } from "drizzle-orm";
+import * as schema from "../../db/schema";
+import { success, error } from "../../lib/response";
+import type { Env, AuthContext } from "../../types";
+import { logAuditWithContext } from "../../lib/audit";
+import { isSiteAdmin } from "./helpers";
 
-const { manualApprovals, attendance, siteMemberships } = schema;
+const { manualApprovals, attendance } = schema;
 
 const app = new Hono<{
   Bindings: Env;
   Variables: { auth: AuthContext };
 }>();
-
-app.use("*", authMiddleware);
-
-const defaultRateLimit = rateLimitMiddleware();
-app.use("*", defaultRateLimit);
-
-const APPROVAL_STATUSES = new Set(schema.approvalStatusEnum);
-
-async function isSiteAdmin(
-  db: ReturnType<typeof drizzle>,
-  userId: string,
-  siteId: string,
-) {
-  const membership = await db
-    .select({ id: siteMemberships.id })
-    .from(siteMemberships)
-    .where(
-      and(
-        eq(siteMemberships.userId, userId),
-        eq(siteMemberships.siteId, siteId),
-        eq(siteMemberships.role, "SITE_ADMIN"),
-        eq(siteMemberships.status, "ACTIVE"),
-      ),
-    )
-    .get();
-
-  return !!membership;
-}
-
-// List approvals (pending by default, or filtered)
-app.get("/", async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const { user } = c.get("auth");
-  const siteId = c.req.query("siteId");
-  const status = c.req.query("status"); // PENDING, APPROVED, REJECTED
-  const date = c.req.query("date");
-  const limit = Math.min(parseInt(c.req.query("limit") || "20"), 100);
-  const offset = parseInt(c.req.query("offset") || "0");
-
-  // Permission check: Site Admin or Super Admin
-  if (user.role === "WORKER") {
-    return error(c, "FORBIDDEN", "Forbidden", 403);
-  }
-
-  const conditions = [];
-  if (siteId) conditions.push(eq(manualApprovals.siteId, siteId));
-  if (status) {
-    const normalizedStatus = status.toUpperCase();
-
-    if (
-      !APPROVAL_STATUSES.has(
-        normalizedStatus as (typeof schema.approvalStatusEnum)[number],
-      )
-    ) {
-      return error(c, "INVALID_STATUS", "Invalid status filter", 400);
-    }
-
-    conditions.push(
-      eq(
-        manualApprovals.status,
-        normalizedStatus as (typeof schema.approvalStatusEnum)[number],
-      ),
-    );
-  }
-
-  if (date) {
-    const targetDate = new Date(date);
-    if (!isNaN(targetDate.getTime())) {
-      const nextDay = new Date(targetDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      conditions.push(
-        and(
-          gte(manualApprovals.validDate, targetDate),
-          lt(manualApprovals.validDate, nextDay),
-        ),
-      );
-    }
-  }
-
-  const approvalList = await db.query.manualApprovals.findMany({
-    limit,
-    offset,
-    where: conditions.length > 0 ? and(...conditions) : undefined,
-    orderBy: desc(manualApprovals.createdAt),
-    with: {
-      user: true,
-      approvedBy: true,
-      site: true,
-    },
-  });
-
-  return success(c, {
-    data: approvalList,
-    pagination: {
-      limit,
-      offset,
-      count: approvalList.length,
-    },
-  });
-});
 
 // Approve request
 app.post("/:id/approve", async (c) => {
