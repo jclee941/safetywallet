@@ -230,9 +230,35 @@ e2e-smoke:
 # DEPLOY STAGE
 # =============================================================================
 
+deploy:worker:
+  stage: deploy
+  needs: [build:worker, build:admin, build:api]
+  environment:
+    name: production
+    url: https://safetywallet.jclee.me
+  script:
+    - |
+      echo "Deploying Worker to Cloudflare..."
+      export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CLOUDFLARE_API_TOKEN_API:-${CLOUDFLARE_API_TOKEN_WORKER:-${CLOUDFLARE_API_TOKEN_ADMIN:-${CLOUDFLARE_API_TOKEN_PURGE:-${CF_API_TOKEN:-}}}}}}"
+      export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
+      if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+        echo "Error: CLOUDFLARE_API_TOKEN not set for deployment"
+        exit 1
+      fi
+    - |
+      echo "Building static assets..."
+      npm run build:static
+    - |
+      echo "Deploying to Cloudflare..."
+      cd apps/api
+      npx wrangler deploy --config wrangler.toml --env=""
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+
 d1-migrate:
   stage: deploy
-  needs: [build:api]
+  needs: [deploy:worker]
   environment:
     name: production
     url: https://safetywallet.jclee.me
