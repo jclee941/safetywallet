@@ -4,48 +4,19 @@ import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
-import { pointPolicies, siteMemberships } from "../db/schema";
-import { success, error } from "../lib/response";
-import { authMiddleware } from "../middleware/auth";
-import { rateLimitMiddleware } from "../middleware/rate-limit";
-import { logAuditWithContext } from "../lib/audit";
-import type { Env, AuthContext } from "../types";
-import { CreatePolicySchema, UpdatePolicySchema } from "../validators/schemas";
+import { pointPolicies, siteMemberships } from "../../db/schema";
+import { success, error } from "../../lib/response";
+import { logAuditWithContext } from "../../lib/audit";
+import type { Env, AuthContext } from "../../types";
+import {
+  CreatePolicySchema,
+  UpdatePolicySchema,
+} from "../../validators/schemas";
+import { requireSiteAdmin } from "./helpers";
 
-const policies = new Hono<{
-  Bindings: Env;
-  Variables: { auth: AuthContext };
-}>();
+const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 
-async function requireSiteAdmin(
-  db: ReturnType<typeof drizzle>,
-  userId: string,
-  siteId: string,
-  userRole: string,
-): Promise<void> {
-  if (userRole === "SUPER_ADMIN") return;
-
-  const membership = await db
-    .select()
-    .from(siteMemberships)
-    .where(
-      and(
-        eq(siteMemberships.userId, userId),
-        eq(siteMemberships.siteId, siteId),
-        eq(siteMemberships.status, "ACTIVE"),
-      ),
-    )
-    .get();
-
-  if (!membership || membership.role !== "SITE_ADMIN") {
-    throw new HTTPException(403, { message: "Site admin access required" });
-  }
-}
-
-const defaultRateLimit = rateLimitMiddleware();
-policies.use("*", defaultRateLimit);
-
-policies.get("/site/:siteId", authMiddleware, async (c) => {
+app.get("/site/:siteId", async (c) => {
   const authContext = c.get("auth");
   if (!authContext) {
     throw new HTTPException(401, { message: "Authentication required" });
@@ -58,7 +29,6 @@ policies.get("/site/:siteId", authMiddleware, async (c) => {
 
   const db = drizzle(c.env.DB);
 
-  // Verify user has membership in the requested site
   if (authContext.user.role !== "SUPER_ADMIN") {
     const membership = await db
       .select()
@@ -85,7 +55,7 @@ policies.get("/site/:siteId", authMiddleware, async (c) => {
   return success(c, { policies: policyList }, 200);
 });
 
-policies.get("/:id", authMiddleware, async (c) => {
+app.get("/:id", async (c) => {
   const authContext = c.get("auth");
   if (!authContext) {
     throw new HTTPException(401, { message: "Authentication required" });
@@ -110,85 +80,79 @@ policies.get("/:id", authMiddleware, async (c) => {
   return success(c, { policy }, 200);
 });
 
-policies.post(
-  "/",
-  authMiddleware,
-  zValidator("json", CreatePolicySchema as never),
-  async (c) => {
-    const authContext = c.get("auth");
-    if (!authContext) {
-      throw new HTTPException(401, { message: "Authentication required" });
-    }
+app.post("/", zValidator("json", CreatePolicySchema as never), async (c) => {
+  const authContext = c.get("auth");
+  if (!authContext) {
+    throw new HTTPException(401, { message: "Authentication required" });
+  }
 
-    const body: z.infer<typeof CreatePolicySchema> = c.req.valid("json");
+  const body: z.infer<typeof CreatePolicySchema> = c.req.valid("json");
 
-    if (
-      !body.siteId ||
-      !body.reasonCode ||
-      !body.name ||
-      body.defaultAmount === undefined
-    ) {
-      return error(
-        c,
-        "MISSING_FIELDS",
-        "siteId, reasonCode, name, and defaultAmount are required",
-        400,
-      );
-    }
-
-    const db = drizzle(c.env.DB);
-
-    await requireSiteAdmin(
-      db,
-      authContext.user.id,
-      body.siteId,
-      authContext.user.role,
+  if (
+    !body.siteId ||
+    !body.reasonCode ||
+    !body.name ||
+    body.defaultAmount === undefined
+  ) {
+    return error(
+      c,
+      "MISSING_FIELDS",
+      "siteId, reasonCode, name, and defaultAmount are required",
+      400,
     );
+  }
 
-    const existing = await db
-      .select()
-      .from(pointPolicies)
-      .where(
-        and(
-          eq(pointPolicies.siteId, body.siteId),
-          eq(pointPolicies.reasonCode, body.reasonCode),
-        ),
-      )
-      .get();
+  const db = drizzle(c.env.DB);
 
-    if (existing) {
-      return error(
-        c,
-        "DUPLICATE",
-        "Policy with this reasonCode already exists for this site",
-        409,
-      );
-    }
+  await requireSiteAdmin(
+    db,
+    authContext.user.id,
+    body.siteId,
+    authContext.user.role,
+  );
 
-    const newPolicy = await db
-      .insert(pointPolicies)
-      .values({
-        siteId: body.siteId,
-        reasonCode: body.reasonCode,
-        name: body.name,
-        description: body.description || null,
-        defaultAmount: body.defaultAmount,
-        minAmount: body.minAmount ?? null,
-        maxAmount: body.maxAmount ?? null,
-        dailyLimit: body.dailyLimit ?? null,
-        monthlyLimit: body.monthlyLimit ?? null,
-        isActive: true,
-      })
-      .returning()
-      .get();
+  const existing = await db
+    .select()
+    .from(pointPolicies)
+    .where(
+      and(
+        eq(pointPolicies.siteId, body.siteId),
+        eq(pointPolicies.reasonCode, body.reasonCode),
+      ),
+    )
+    .get();
 
-    return success(c, { policy: newPolicy }, 201);
-  },
-);
+  if (existing) {
+    return error(
+      c,
+      "DUPLICATE",
+      "Policy with this reasonCode already exists for this site",
+      409,
+    );
+  }
 
-policies.patch(
+  const newPolicy = await db
+    .insert(pointPolicies)
+    .values({
+      siteId: body.siteId,
+      reasonCode: body.reasonCode,
+      name: body.name,
+      description: body.description || null,
+      defaultAmount: body.defaultAmount,
+      minAmount: body.minAmount ?? null,
+      maxAmount: body.maxAmount ?? null,
+      dailyLimit: body.dailyLimit ?? null,
+      monthlyLimit: body.monthlyLimit ?? null,
+      isActive: true,
+    })
+    .returning()
+    .get();
+
+  return success(c, { policy: newPolicy }, 201);
+});
+
+app.patch(
   "/:id",
-  authMiddleware,
   zValidator("json", UpdatePolicySchema as never),
   async (c) => {
     const authContext = c.get("auth");
@@ -275,7 +239,7 @@ policies.patch(
   },
 );
 
-policies.delete("/:id", authMiddleware, async (c) => {
+app.delete("/:id", async (c) => {
   const authContext = c.get("auth");
   if (!authContext) {
     throw new HTTPException(401, { message: "Authentication required" });
@@ -309,4 +273,4 @@ policies.delete("/:id", authMiddleware, async (c) => {
   return success(c, { message: "Policy deleted" }, 200);
 });
 
-export default policies;
+export default app;
