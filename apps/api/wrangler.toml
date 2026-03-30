@@ -22,6 +22,7 @@ FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
 
 # Required secrets — use .dev.vars for local dev, `wrangler secret put <NAME>` for production:
+#   JWT_SECRET / HMAC_SECRET / ENCRYPTION_KEY / ALERT_WEBHOOK_URL / FAS_SYNC_SECRET / ELASTICSEARCH_URL / ELASTICSEARCH_API_KEY
 #   JWT_SECRET          — JWT signing key
 #   HMAC_SECRET         — HMAC-SHA256 for PII hashing
 #   ENCRYPTION_KEY      — AES encryption for phone/DOB
@@ -93,11 +94,11 @@ head_sampling_rate = 1
 
 # Durable Objects for rate limiting
 [durable_objects]
-bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }]
+bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }, { name = "JOB_SCHEDULER", class_name = "JobScheduler" }]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["RateLimiter"]
+new_sqlite_classes = ["RateLimiter", "JobScheduler"]
 
 
 # Development Environment
@@ -108,7 +109,7 @@ name = "safetywallet-dev"
 ENVIRONMENT = "development"
 REQUIRE_ATTENDANCE_FOR_LOGIN = "false"
 REQUIRE_ATTENDANCE_FOR_POST = "false"
-ELASTICSEARCH_URL = "http://192.168.50.105:9200"
+ELASTICSEARCH_URL = "http://192.168.50.109:9200"
 ELASTICSEARCH_INDEX_PREFIX = "safetywallet-logs"
 ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001"
 VAPID_SUBJECT = "mailto:admin@safetywallet.jclee.me"
@@ -117,7 +118,7 @@ FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
 
 # Required secrets — use .dev.vars for local dev, `wrangler secret put <NAME> --env dev` for staging:
-#   JWT_SECRET / HMAC_SECRET / ENCRYPTION_KEY / ALERT_WEBHOOK_URL / FAS_SYNC_SECRET
+#   JWT_SECRET / HMAC_SECRET / ENCRYPTION_KEY / ALERT_WEBHOOK_URL / FAS_SYNC_SECRET / ELASTICSEARCH_URL / ELASTICSEARCH_API_KEY
 
 [[env.dev.d1_databases]]
 binding = "DB"
@@ -158,7 +159,7 @@ enabled = true
 head_sampling_rate = 1
 
 [env.dev.durable_objects]
-bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }]
+bindings = [{ name = "RATE_LIMITER", class_name = "RateLimiter" }, { name = "JOB_SCHEDULER", class_name = "JobScheduler" }]
 
 [[env.dev.queues.producers]]
 queue = "safetywallet-notifications"

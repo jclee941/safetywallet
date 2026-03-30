@@ -39,41 +39,53 @@ export async function emitSyncFailureToElk(
   const indexPrefix =
     env.ELASTICSEARCH_INDEX_PREFIX ?? DEFAULT_ELASTICSEARCH_INDEX_PREFIX;
   const endpoint = `${env.ELASTICSEARCH_URL}/${indexPrefix}-${indexDate}/_doc/${eventId}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (env.ELASTICSEARCH_API_KEY) {
+    headers["Authorization"] = `ApiKey ${env.ELASTICSEARCH_API_KEY}`;
+  }
 
   await withRetry(
     async () => {
-      const response = await fetch(endpoint, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          level: "error",
-          module: "scheduled",
-          service: "safetywallet",
-          message: `Scheduled sync failed (${telemetry.syncType})`,
-          msg: `Scheduled sync failed (${telemetry.syncType})`,
-          timestamp: telemetry.timestamp,
-          "@timestamp": telemetry.timestamp,
-          action: "SYNC_FAILURE",
-          metadata: {
-            correlationId: telemetry.correlationId,
-            syncType: telemetry.syncType,
-            errorCode: telemetry.errorCode,
-            errorMessage: telemetry.errorMessage,
-            lockName: telemetry.lockName,
-            eventId,
-          },
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(endpoint, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({
+            level: "error",
+            module: "scheduled",
+            service: "safetywallet",
+            message: `Scheduled sync failed (${telemetry.syncType})`,
+            msg: `Scheduled sync failed (${telemetry.syncType})`,
+            timestamp: telemetry.timestamp,
+            "@timestamp": telemetry.timestamp,
+            action: "SYNC_FAILURE",
+            metadata: {
+              correlationId: telemetry.correlationId,
+              syncType: telemetry.syncType,
+              errorCode: telemetry.errorCode,
+              errorMessage: telemetry.errorMessage,
+              lockName: telemetry.lockName,
+              eventId,
+            },
+          }),
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        throw new Error(`ELK ingest failed with status ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`ELK ingest failed with status ${response.status}`);
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     },
     2,
     500,
   );
 }
-
 export interface PersistSyncFailureOptions {
   syncType: "FAS_WORKER";
   errorCode: string;
@@ -90,24 +102,26 @@ export async function persistSyncFailure(
   const timestamp = new Date().toISOString();
   const correlationId = crypto.randomUUID();
 
-  try {
-    await emitSyncFailureToElk(env, {
-      timestamp,
-      correlationId,
-      syncType: options.syncType,
-      errorCode: options.errorCode,
-      errorMessage: options.errorMessage,
-      lockName: options.lockName,
-    });
-  } catch (elkErr) {
-    log.warn("Failed to emit scheduled sync failure to ELK", {
-      elkErrorMessage:
-        elkErr instanceof Error ? elkErr.message : String(elkErr),
-      correlationId,
-      syncType: options.syncType,
-      lockName: options.lockName,
-    });
-  }
+  void Promise.resolve().then(async () => {
+    try {
+      await emitSyncFailureToElk(env, {
+        timestamp,
+        correlationId,
+        syncType: options.syncType,
+        errorCode: options.errorCode,
+        errorMessage: options.errorMessage,
+        lockName: options.lockName,
+      });
+    } catch (elkErr) {
+      log.warn("Failed to emit scheduled sync failure to ELK", {
+        elkErrorMessage:
+          elkErr instanceof Error ? elkErr.message : String(elkErr),
+        correlationId,
+        syncType: options.syncType,
+        lockName: options.lockName,
+      });
+    }
+  });
 
   if (options.setFasDownStatus) {
     try {
