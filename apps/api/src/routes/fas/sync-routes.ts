@@ -1,24 +1,20 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, eq, inArray } from "drizzle-orm";
-import type { AuthContext, Env } from "../types";
-import { users } from "../db/schema";
-import { hmac, encrypt } from "../lib/crypto";
-import { logAuditWithContext } from "../lib/audit";
-import { dbBatchChunked } from "../db/helpers";
-import { success, error } from "../lib/response";
-import { authMiddleware } from "../middleware/auth";
-import { maskName } from "../utils/common";
-import { AdminSyncWorkersSchema } from "../validators/schemas";
-
-const FAS_EMPLOYEES_LIMIT = 1000;
+import { eq, inArray } from "drizzle-orm";
+import type { AuthContext, Env } from "../../types";
+import { users } from "../../db/schema";
+import { hmac, encrypt } from "../../lib/crypto";
+import { logAuditWithContext } from "../../lib/audit";
+import { dbBatchChunked } from "../../db/helpers";
+import { success, error } from "../../lib/response";
+import { maskName } from "../../utils/common";
+import { AdminSyncWorkersSchema } from "../../validators/schemas";
 
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 
 app.post(
   "/workers/sync",
-  authMiddleware,
   zValidator("json", AdminSyncWorkersSchema),
   async (c) => {
     const auth = c.get("auth");
@@ -228,7 +224,7 @@ app.post(
   },
 );
 
-app.delete("/workers/:externalWorkerId", authMiddleware, async (c) => {
+app.delete("/workers/:externalWorkerId", async (c) => {
   const auth = c.get("auth");
   if (auth.user.role !== "SITE_ADMIN" && auth.user.role !== "SUPER_ADMIN") {
     return error(c, "ADMIN_ACCESS_REQUIRED", "Admin access required", 403);
@@ -276,33 +272,6 @@ app.delete("/workers/:externalWorkerId", authMiddleware, async (c) => {
   }
 
   return success(c, { deleted: true });
-});
-
-// FAS employee listing (admin-only, JWT auth)
-app.get("/employees", authMiddleware, async (c) => {
-  const auth = c.get("auth");
-  if (
-    auth.user.role !== "SITE_ADMIN" &&
-    auth.user.role !== "SITE_ADMIN" &&
-    auth.user.role !== "SUPER_ADMIN"
-  ) {
-    return error(c, "ADMIN_ACCESS_REQUIRED", "Admin access required", 403);
-  }
-
-  const db = drizzle(c.env.DB);
-  const employees = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      nameMasked: users.nameMasked,
-      externalWorkerId: users.externalWorkerId,
-    })
-    .from(users)
-    .where(eq(users.externalSystem, "FAS"))
-    .orderBy(desc(users.updatedAt))
-    .limit(FAS_EMPLOYEES_LIMIT);
-
-  return success(c, { employees });
 });
 
 export default app;
