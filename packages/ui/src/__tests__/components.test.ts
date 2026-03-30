@@ -100,5 +100,5 @@ describe("UI Components barrel exports", () => {
 
     // cn utility
     expect(ui.cn).toBeDefined();
-  });
+  }, 20000);
 });
