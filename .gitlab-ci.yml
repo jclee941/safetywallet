@@ -34,6 +34,18 @@ cache:
 default:
   image: node:20-slim
   before_script:
+    - |
+      # Memory-optimized npm install to prevent OOM kills
+      export NODE_OPTIONS="--max-old-space-size=4096"
+      export NPM_CONFIG_FUND="false"
+      export NPM_CONFIG_AUDIT="false"
+      npm ci --cache .npm --prefer-offline --no-audit
+    - |
+      # Verify installation success
+      if [ $? -ne 0 ]; then
+        echo "ERROR: npm ci failed. Retrying with reduced concurrency..."
+        npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+      fi
     - npm ci --cache .npm --prefer-offline
 
 # =============================================================================

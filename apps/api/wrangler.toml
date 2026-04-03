@@ -77,15 +77,15 @@ binding = "ANALYTICS"
 
 # Cloudflare Queue for reliable notification delivery
 [[queues.producers]]
-queue = "safewallet-notifications"
+queue = "safetywallet-notifications"
 binding = "NOTIFICATION_QUEUE"
 
 [[queues.consumers]]
-queue = "safewallet-notifications"
+queue = "safetywallet-notifications"
 max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 3
-dead_letter_queue = "safewallet-notifications-dlq"
+dead_letter_queue = "safetywallet-notifications-dlq"
 
 # Workers AI for hazard classification and privacy features
 [ai]
