@@ -12,7 +12,7 @@ import {
   runPiiLifecycleCleanup,
   publishScheduledAnnouncements,
   runMetricsAlertCheck,
-} from "./daily-jobs";
+} from "./daily";
 import { log, withRetry, persistSyncFailure } from "./helpers";
 
 export interface JobDefinition {

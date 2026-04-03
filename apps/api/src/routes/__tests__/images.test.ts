@@ -102,7 +102,7 @@ vi.mock("../../lib/face-blur", () => ({
   })),
 }));
 // Mock gemini-ai
-vi.mock("../../lib/gemini-ai", () => ({
+vi.mock("../../lib/ai", () => ({
   getAiCredentials: vi.fn(() => null),
   analyzeHazardImage: vi.fn(async () => null),
 }));
@@ -677,7 +677,7 @@ describe("routes/images", () => {
 
     it("triggers Gemini AI analysis when credentials are present", async () => {
       const { getAiCredentials, analyzeHazardImage } =
-        await import("../../lib/gemini-ai");
+        await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValue({
         apiKey: "test-key",
       });
@@ -744,7 +744,7 @@ describe("routes/images", () => {
 
     it("swallows AI analysis rejection and still returns 200", async () => {
       const { getAiCredentials, analyzeHazardImage } =
-        await import("../../lib/gemini-ai");
+        await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValue({
         apiKey: "test-key",
       });
@@ -806,7 +806,7 @@ describe("routes/images", () => {
       const { classifyHazard } = await import("../../lib/workers-ai");
       vi.mocked(classifyHazard).mockResolvedValueOnce(null as never);
 
-      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      const { getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValue(null);
 
       const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
@@ -851,7 +851,7 @@ describe("routes/images", () => {
     });
 
     it("skips storage when Gemini analysis returns null", async () => {
-      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      const { getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "test-key" });
 
       const waitUntilFn = vi.fn<(p: Promise<unknown>) => void>();
@@ -891,7 +891,7 @@ describe("routes/images", () => {
 
     it("skips metadata re-put when R2 head returns null during Gemini analysis", async () => {
       const { getAiCredentials, analyzeHazardImage } =
-        await import("../../lib/gemini-ai");
+        await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValue({ apiKey: "test-key" });
       vi.mocked(analyzeHazardImage).mockResolvedValue({
         hazardType: "fall_hazard",

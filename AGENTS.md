@@ -33,7 +33,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 ├── docs/                    # PRD, requirements specs, ops runbooks
 ├── scripts/                 # Go/JS tooling (verify, naming lint, anti-pattern checks)
 ├── e2e/                     # Playwright E2E tests (auth setup, admin, worker flows)
-├── .github/workflows/       # CI/CD: ci.yml + synced community workflows
+├── .gitlab-ci.yml           # CI/CD: GitLab pipeline (lint → typecheck → guards → test → build → migrate)
 ├── wrangler.toml            # Root CF Worker config + all bindings
 ├── turbo.json               # Turborepo pipeline (types → ui → apps)
 └── playwright.config.ts     # 6 Playwright projects
@@ -81,7 +81,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 - **API → R2**: Image/video upload with Workers AI face blur + perceptual hash dedup. Served via `GET /r2/*` route.
 - **API → KV**: Auth session cache, system status flags (`fas_down`, `maintenance`).
 - **API → Queue**: Notification delivery via `NOTIFICATION_QUEUE` with DLQ fallback.
-- **Observability**: Analytics Engine for request metrics. GitHub issue auto-creation on unhandled errors.
+- **Observability**: Analytics Engine for request metrics. Issue tracking integration on unhandled errors.
 
 ## WHERE TO LOOK
 
@@ -100,7 +100,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 | Shared types/DTOs     | `packages/types/src/`           | Enums, DTOs, Zod schemas shared across apps          |
 | Shared UI components  | `packages/ui/src/components/`   | shadcn/ui base + Tailwind v4 theme tokens            |
 | CF Worker bindings    | `wrangler.toml`                 | D1, R2, KV, Queue, DO, AI, Analytics, Hyperdrive     |
-| CI pipeline           | `.github/workflows/ci.yml`      | lint → typecheck → guards → test → build → migrate   |
+| CI pipeline           | `.gitlab-ci.yml`                | lint → typecheck → guards → test → build → migrate   |
 | E2E tests             | `e2e/`                          | Playwright: auth, admin, worker flows                |
 | Verification script   | `scripts/verify.go`             | 7-step pipeline (typecheck → build)                  |
 | Requirements specs    | `docs/requirements/`            | Feature specs, ELK prefix, etc.                      |
@@ -125,7 +125,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 - Never suppress type errors: no `as any`, `@ts-ignore`, `@ts-expect-error`, no empty `catch {}`.
 - Never run manual deploys — deploy is CI-only (`deploy:api` script exits non-zero).
 - Never hardcode IPs, secrets, or credentials — use env vars or `wrangler.toml` vars.
-- Never use mutable GitHub Action tags (`@v4`) — always SHA-pin with `# vN` comment.
+- Never use mutable action tags — always pin versions with explicit references.
 - Never use merge commits — squash merge only.
 - Never create long-lived feature branches — trunk-based development.
 - Never hardcode UI strings — use i18n keys from `packages/types/src/i18n/`.
@@ -149,7 +149,7 @@ npm run git:preflight      # Pre-push verification (Go script)
 
 - Verify auth changes maintain triple-layer validation and KST expiry logic.
 - Verify D1 schema changes have corresponding migration files.
-- For workflow changes: verify SHA-pinned actions, correct permissions scoping.
+- For CI/CD changes: verify pinned versions, correct permissions scoping.
 
 ## NOTES
 

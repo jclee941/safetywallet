@@ -2,11 +2,29 @@ import { createLogger } from "../logger";
 import type { HyperdriveBinding } from "../../types";
 import { getConnection, queryWithTimeout } from "./connection";
 import {
+  buildDailyAttendanceFallbackCandidates,
+  buildRawRowsCandidates,
+  buildRawSummaryCandidates,
+  buildRealtimeStatsCandidates,
   formatAccsDayWithDash,
   mergeAttendanceRecord,
+  normalizeSiteCd,
   sortAttendanceByInTime,
 } from "./attendance-helpers";
-import { mapToFasAttendance } from "./mappers";
+import {
+  mapToFasAttendance,
+  mapToFasAttendanceSiteCount,
+  mapToFasAttendanceTrendPoint,
+} from "./attendance-mappers";
+import {
+  createRawSummaryAccumulator,
+  createRealtimeStatsAccumulator,
+  finalizeRawRowsSource,
+  finalizeRawSummary,
+  finalizeRealtimeStats,
+  mergeRawSummaryRows,
+  mergeRealtimeStatsRows,
+} from "./attendance-stats";
 import {
   DEFAULT_FAS_SOURCE,
   tbl,
@@ -29,8 +47,7 @@ export async function fasGetDailyAttendance(
 ): Promise<FasAttendance[]> {
   const conn = await getConnection(hyperdrive);
   try {
-    const normalizedSiteCd =
-      siteCd === undefined || siteCd === null ? null : siteCd;
+    const normalizedSiteCd = normalizeSiteCd(siteCd);
     const dateWithDash = formatAccsDayWithDash(accsDay);
 
     const [accessDailyRows] = await queryWithTimeout(
@@ -60,36 +77,11 @@ export async function fasGetDailyAttendance(
     });
 
     const byWorker = new Map<string, FasAttendance>();
-    const candidates: Array<{ query: string; params: unknown[] }> = [
-      {
-        query: `SELECT a.empl_cd,
-                       DATE_FORMAT(a.accs_dt, '%Y%m%d') AS accs_day,
-                       MIN(DATE_FORMAT(a.accs_dt, '%H%i')) AS in_time,
-                       MAX(DATE_FORMAT(a.accs_dt, '%H%i')) AS out_time,
-                       0 AS state,
-                       COALESCE(MAX(a.part_cd), '') AS part_cd
-                FROM ${tbl(source, "access")} a
-                WHERE DATE(a.accs_dt) = ?${normalizedSiteCd ? " AND a.site_cd = ?" : ""}
-                GROUP BY a.empl_cd, DATE_FORMAT(a.accs_dt, '%Y%m%d')`,
-        params: normalizedSiteCd
-          ? [dateWithDash, normalizedSiteCd]
-          : [dateWithDash],
-      },
-      {
-        query: `SELECT ah.empl_cd,
-                       DATE_FORMAT(ah.accs_dt, '%Y%m%d') AS accs_day,
-                       MIN(DATE_FORMAT(ah.accs_dt, '%H%i')) AS in_time,
-                       MAX(DATE_FORMAT(ah.accs_dt, '%H%i')) AS out_time,
-                       0 AS state,
-                       COALESCE(MAX(ah.part_cd), '') AS part_cd
-                FROM ${tbl(source, "access_history")} ah
-                WHERE DATE(ah.accs_dt) = ?${normalizedSiteCd ? " AND ah.site_cd = ?" : ""}
-                GROUP BY ah.empl_cd, DATE_FORMAT(ah.accs_dt, '%Y%m%d')`,
-        params: normalizedSiteCd
-          ? [dateWithDash, normalizedSiteCd]
-          : [dateWithDash],
-      },
-    ];
+    const candidates = buildDailyAttendanceFallbackCandidates(
+      source,
+      dateWithDash,
+      normalizedSiteCd,
+    );
 
     for (const candidate of candidates) {
       try {
@@ -128,46 +120,16 @@ export async function fasGetDailyAttendanceRawSummary(
 ): Promise<FasRawAttendanceSummary> {
   const conn = await getConnection(hyperdrive);
   const dateWithDash = formatAccsDayWithDash(accsDay);
-  const normalizedSiteCd =
-    siteCd === undefined || siteCd === null ? null : siteCd;
-
-  const buildSiteClause = (siteColumn: string) =>
-    normalizedSiteCd ? ` AND ${siteColumn} = ?` : "";
-  const withSiteParam = (params: unknown[]) =>
-    normalizedSiteCd ? [...params, normalizedSiteCd] : params;
-
-  const candidates: Array<{
-    source: string;
-    query: string;
-    params: unknown[];
-  }> = [
-    {
-      source: "access_daily.raw",
-      query: `SELECT ad.empl_cd AS empl_cd
-           FROM ${tbl(source, "access_daily")} ad
-          WHERE ad.accs_day = ?${buildSiteClause("ad.site_cd")}`,
-      params: withSiteParam([accsDay]),
-    },
-    {
-      source: "access.raw",
-      query: `SELECT a.empl_cd AS empl_cd
-           FROM ${tbl(source, "access")} a
-          WHERE DATE(a.accs_dt) = ?${buildSiteClause("a.site_cd")}`,
-      params: withSiteParam([dateWithDash]),
-    },
-    {
-      source: "access_history.raw",
-      query: `SELECT ah.empl_cd AS empl_cd
-           FROM ${tbl(source, "access_history")} ah
-          WHERE DATE(ah.accs_dt) = ?${buildSiteClause("ah.site_cd")}`,
-      params: withSiteParam([dateWithDash]),
-    },
-  ];
+  const normalizedSiteCd = normalizeSiteCd(siteCd);
+  const candidates = buildRawSummaryCandidates(
+    source,
+    accsDay,
+    dateWithDash,
+    normalizedSiteCd,
+  );
 
   try {
-    const mergedWorkerIds = new Set<string>();
-    const successfulSources: string[] = [];
-    let totalRows = 0;
+    const summary = createRawSummaryAccumulator();
 
     for (const candidate of candidates) {
       try {
@@ -176,15 +138,11 @@ export async function fasGetDailyAttendanceRawSummary(
           candidate.query,
           candidate.params,
         );
-        const mapped = rows as Array<Record<string, unknown>>;
-        totalRows += mapped.length;
-        for (const row of mapped) {
-          const workerId = String(row["empl_cd"] || "");
-          if (workerId.length > 0) {
-            mergedWorkerIds.add(workerId);
-          }
-        }
-        successfulSources.push(candidate.source);
+        mergeRawSummaryRows(
+          summary,
+          rows as Array<Record<string, unknown>>,
+          candidate.source,
+        );
       } catch (err) {
         logger.debug("FAS raw summary source query failed", {
           action: "fas_raw_summary_fallback",
@@ -194,14 +152,7 @@ export async function fasGetDailyAttendanceRawSummary(
       }
     }
 
-    return {
-      source:
-        successfulSources.length > 0 ? successfulSources.join("+") : "none",
-      totalRows,
-      checkins: totalRows,
-      uniqueWorkers: mergedWorkerIds.size,
-      workerIds: [...mergedWorkerIds],
-    };
+    return finalizeRawSummary(summary);
   } finally {
     await conn.end();
   }
@@ -216,51 +167,15 @@ export async function fasGetDailyAttendanceRawRows(
 ): Promise<FasRawAttendanceRowsResult> {
   const conn = await getConnection(hyperdrive);
   const dateWithDash = formatAccsDayWithDash(accsDay);
-  const normalizedSiteCd =
-    siteCd === undefined || siteCd === null ? null : siteCd;
+  const normalizedSiteCd = normalizeSiteCd(siteCd);
   const safeLimit = Math.min(1000, Math.max(1, Math.trunc(limit)));
-
-  const withSiteClause = (siteColumn: string) =>
-    normalizedSiteCd ? ` AND ${siteColumn} = ?` : "";
-
-  const withParams = (params: unknown[]) =>
-    normalizedSiteCd
-      ? [...params, normalizedSiteCd, safeLimit]
-      : [...params, safeLimit];
-
-  const candidates: Array<{
-    source: string;
-    query: string;
-    params: unknown[];
-  }> = [
-    {
-      source: "access_daily.raw",
-      query: `SELECT *
-           FROM ${tbl(source, "access_daily")} ad
-          WHERE ad.accs_day = ?${withSiteClause("ad.site_cd")}
-          ORDER BY ad.in_time ASC
-          LIMIT ?`,
-      params: withParams([accsDay]),
-    },
-    {
-      source: "access.raw",
-      query: `SELECT *
-           FROM ${tbl(source, "access")} a
-          WHERE DATE(a.accs_dt) = ?${withSiteClause("a.site_cd")}
-          ORDER BY a.accs_dt ASC
-          LIMIT ?`,
-      params: withParams([dateWithDash]),
-    },
-    {
-      source: "access_history.raw",
-      query: `SELECT *
-           FROM ${tbl(source, "access_history")} ah
-          WHERE DATE(ah.accs_dt) = ?${withSiteClause("ah.site_cd")}
-          ORDER BY ah.accs_dt ASC
-          LIMIT ?`,
-      params: withParams([dateWithDash]),
-    },
-  ];
+  const candidates = buildRawRowsCandidates(
+    source,
+    accsDay,
+    dateWithDash,
+    normalizedSiteCd,
+    safeLimit,
+  );
 
   try {
     const successfulSources: string[] = [];
@@ -291,8 +206,7 @@ export async function fasGetDailyAttendanceRawRows(
         : mergedRows;
 
     return {
-      source:
-        successfulSources.length > 0 ? successfulSources.join("+") : "none",
+      source: finalizeRawRowsSource(successfulSources),
       rows: trimmedRows,
     };
   } finally {
@@ -307,47 +221,17 @@ export async function fasGetDailyAttendanceRealtimeStats(
   source: FasSource = DEFAULT_FAS_SOURCE,
 ): Promise<FasAttendanceRealtimeStats> {
   const conn = await getConnection(hyperdrive);
-  const normalizedSiteCd =
-    siteCd === undefined || siteCd === null ? null : siteCd;
+  const normalizedSiteCd = normalizeSiteCd(siteCd);
   const dateWithDash = formatAccsDayWithDash(accsDay);
-
-  const withSiteClause = (siteColumn: string) =>
-    normalizedSiteCd ? ` AND ${siteColumn} = ?` : "";
-  const withParams = (params: unknown[]) =>
-    normalizedSiteCd ? [...params, normalizedSiteCd] : params;
+  const candidates = buildRealtimeStatsCandidates(
+    source,
+    accsDay,
+    dateWithDash,
+    normalizedSiteCd,
+  );
 
   try {
-    const checkedInWorkers = new Set<string>();
-    const dedupCheckinEvents = new Set<string>();
-    const successfulSources: string[] = [];
-    let totalRows = 0;
-
-    const candidates = [
-      {
-        name: "access_daily",
-        query: `SELECT ad.empl_cd AS empl_cd,
-                CONCAT(ad.accs_day, LPAD(COALESCE(ad.in_time, ''), 4, '0')) AS checkin_key
-           FROM ${tbl(source, "access_daily")} ad
-          WHERE ad.accs_day = ?${withSiteClause("ad.site_cd")}`,
-        params: withParams([accsDay]),
-      },
-      {
-        name: "access",
-        query: `SELECT a.empl_cd AS empl_cd,
-                DATE_FORMAT(a.accs_dt, '%Y%m%d%H%i') AS checkin_key
-           FROM ${tbl(source, "access")} a
-          WHERE DATE(a.accs_dt) = ?${withSiteClause("a.site_cd")}`,
-        params: withParams([dateWithDash]),
-      },
-      {
-        name: "access_history",
-        query: `SELECT ah.empl_cd AS empl_cd,
-                DATE_FORMAT(ah.accs_dt, '%Y%m%d%H%i') AS checkin_key
-           FROM ${tbl(source, "access_history")} ah
-          WHERE DATE(ah.accs_dt) = ?${withSiteClause("ah.site_cd")}`,
-        params: withParams([dateWithDash]),
-      },
-    ];
+    const stats = createRealtimeStatsAccumulator();
 
     for (const candidate of candidates) {
       try {
@@ -356,34 +240,21 @@ export async function fasGetDailyAttendanceRealtimeStats(
           candidate.query,
           candidate.params,
         );
-        const mapped = rows as Array<Record<string, unknown>>;
-        totalRows += mapped.length;
-        for (const row of mapped) {
-          const workerId = String(row["empl_cd"] || "").trim();
-          const checkinKey = String(row["checkin_key"] || "").trim();
-          if (!workerId || !checkinKey) {
-            continue;
-          }
-          checkedInWorkers.add(workerId);
-          dedupCheckinEvents.add(`${workerId}|${checkinKey}`);
-        }
-        successfulSources.push(candidate.name);
+        mergeRealtimeStatsRows(
+          stats,
+          rows as Array<Record<string, unknown>>,
+          candidate.source,
+        );
       } catch (err) {
         logger.debug("FAS realtime stats source query failed", {
           action: "fas_realtime_stats_fallback",
-          source: candidate.name,
+          source: candidate.source,
           error: { name: "QueryError", message: String(err) },
         });
       }
     }
 
-    return {
-      source:
-        successfulSources.length > 0 ? successfulSources.join("+") : "none",
-      totalRows,
-      checkedInWorkers: checkedInWorkers.size,
-      dedupCheckinEvents: dedupCheckinEvents.size,
-    };
+    return finalizeRealtimeStats(stats);
   } finally {
     await conn.end();
   }
@@ -409,10 +280,7 @@ export async function fasGetDailyAttendanceSiteCounts(
     );
 
     const siteCounts = (rows as Array<Record<string, unknown>>)
-      .map((row) => ({
-        siteCd: String(row["site_cd"] || "").trim(),
-        rowCount: Number(row["cnt"] || 0),
-      }))
+      .map(mapToFasAttendanceSiteCount)
       .filter((row) => row.siteCd.length > 0)
       .sort((a, b) => b.rowCount - a.rowCount)
       .slice(0, safeLimit);
@@ -434,8 +302,7 @@ export async function fasGetAttendanceTrend(
   source: FasSource = DEFAULT_FAS_SOURCE,
 ): Promise<FasAttendanceTrendPoint[]> {
   const conn = await getConnection(hyperdrive);
-  const normalizedSiteCd =
-    siteCd === undefined || siteCd === null ? null : siteCd;
+  const normalizedSiteCd = normalizeSiteCd(siteCd);
   const siteClause = normalizedSiteCd ? " AND ad.site_cd = ?" : "";
 
   const params: unknown[] = [startAccsDay, endAccsDay];
@@ -458,10 +325,9 @@ export async function fasGetAttendanceTrend(
       params,
     );
 
-    return (rows as Array<Record<string, unknown>>).map((row) => ({
-      date: String(row["accs_day"] || ""),
-      count: Number(row["cnt"] || 0),
-    }));
+    return (rows as Array<Record<string, unknown>>).map(
+      mapToFasAttendanceTrendPoint,
+    );
   } finally {
     await conn.end();
   }

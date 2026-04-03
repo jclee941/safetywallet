@@ -11,7 +11,7 @@ This runbook is the single operational guide for Cloudflare deployment and rollb
 
 ## Prerequisites
 
-### GitHub Secrets
+### CI/CD Variables
 
 | Secret                  | Description                                       |
 | ----------------------- | ------------------------------------------------- |
@@ -63,7 +63,7 @@ Run this once before any production deploy from local environment.
 npm run git:preflight
 ```
 
-This checks remote connectivity, GitHub auth, upstream tracking, and a dry-run push.
+This checks remote connectivity, Git auth, upstream tracking, and a dry-run push.
 
 ### One-Worker Deploy Path
 
@@ -74,11 +74,11 @@ Deploy execution is CI-only.
 
 - Trigger: Push to `master` → Cloudflare Git Integration auto-deploys
 - No dedicated deploy workflow — CF handles build and deploy via git integration
-- Post-deploy monitoring: `.github/workflows/deploy-monitoring.yml` watches completion
+- Post-deploy monitoring: `.gitlab-ci.yml` `notify:slack` job watches completion
 
 ### CI/CD Staging
 
-- No dedicated staging deployment workflow is currently checked in under `.github/workflows/`.
+- No dedicated staging deployment workflow; staging verification is handled via branch-specific pipeline configurations if needed.
 - Staging verification is not currently automated via a dedicated workflow.
 - Manual deploy is prohibited.
 

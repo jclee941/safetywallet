@@ -199,6 +199,7 @@ build:api:
   script:
     - npm run build:static
     - sed -i "s/^VERSION = \"dev\"/VERSION = \"${CI_COMMIT_SHORT_SHA}\"/" wrangler.toml
+    - sed -i "s/^VERSION = \"dev\"/VERSION = \"${CI_COMMIT_SHORT_SHA}\"/" apps/api/wrangler.toml
     - npm run build --workspace=apps/api
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -246,9 +247,7 @@ deploy:worker:
         echo "Error: CLOUDFLARE_API_TOKEN not set for deployment"
         exit 1
       fi
-    - |
-      echo "Building static assets..."
-      npm run build:static
+
     - |
       echo "Deploying to Cloudflare..."
       cd apps/api

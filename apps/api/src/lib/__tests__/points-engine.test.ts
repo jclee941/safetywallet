@@ -96,7 +96,7 @@ import {
   calculateFalseReportPenalty,
   awardApprovalPoints,
   applyFalseReportPenalty,
-} from "../points-engine";
+} from "../points";
 
 const baseInput = {
   postId: "post-1",

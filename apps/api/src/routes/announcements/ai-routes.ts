@@ -4,10 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { Env, AuthContext } from "../../types";
 import { siteMemberships } from "../../db/schema";
 import { success, error } from "../../lib/response";
-import {
-  generateAnnouncementDraft,
-  getAiCredentials,
-} from "../../lib/gemini-ai";
+import { generateAnnouncementDraft, getAiCredentials } from "../../lib/ai";
 
 const app = new Hono<{
   Bindings: Env;

@@ -7,7 +7,7 @@ import exportApp from "./export";
 import fasApp from "./fas";
 import postsApp from "./posts";
 import auditApp from "./audit";
-import attendanceApp from "./attendance";
+import attendanceApp from "./attendance/index";
 import statsApp from "./stats";
 import trendsApp from "./trends";
 import votesApp from "./votes";

@@ -4,7 +4,7 @@ import {
   analyzeActionImage,
   compareBeforeAfterImages,
   getAiCredentials,
-} from "../../lib/gemini-ai";
+} from "../../lib/ai";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -156,7 +156,7 @@ vi.mock("../../lib/audit", () => ({
   logAuditWithContext: vi.fn(),
 }));
 
-vi.mock("../../lib/gemini-ai", () => ({
+vi.mock("../../lib/ai", () => ({
   analyzeActionImage: vi.fn(async () => null),
   compareBeforeAfterImages: vi.fn(async () => null),
   getAiCredentials: vi.fn(() => null),

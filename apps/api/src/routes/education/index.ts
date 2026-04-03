@@ -5,10 +5,10 @@ import { success, error } from "../../lib/response";
 import type { AppType } from "./helpers";
 import { contentsCrud } from "./contents-routes";
 import { contentsAi } from "./contents-ai";
-import quizzesRoute from "./quizzes";
+import quizzesRoute from "./quizzes/index";
 import quizAttemptsRoute from "./quiz-attempts";
 import statutoryRoute from "./statutory";
-import tbmRoute from "./tbm";
+import tbmRoute from "./tbm/index";
 import completionsRoute from "./completions";
 
 const app = new Hono<AppType>();

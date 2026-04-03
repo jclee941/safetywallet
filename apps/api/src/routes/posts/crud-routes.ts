@@ -6,7 +6,7 @@ import { rateLimitMiddleware } from "../../middleware/rate-limit";
 import { success, error } from "../../lib/response";
 import { logAuditWithContext } from "../../lib/audit";
 import { createLogger } from "../../lib/logger";
-import { classifyPost, getAiCredentials } from "../../lib/gemini-ai";
+import { classifyPost, getAiCredentials } from "../../lib/ai";
 import { CreatePostSchema, PostFilterSchema } from "../../validators/schemas";
 import {
   posts,

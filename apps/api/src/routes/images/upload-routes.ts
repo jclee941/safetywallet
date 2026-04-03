@@ -15,7 +15,7 @@ import {
   filterPersonDetections,
 } from "../../lib/workers-ai";
 import { blurPersonRegions } from "../../lib/face-blur";
-import { analyzeHazardImage, getAiCredentials } from "../../lib/gemini-ai";
+import { analyzeHazardImage, getAiCredentials } from "../../lib/ai";
 
 const uploadRateLimit = rateLimitMiddleware({
   maxRequests: 20,

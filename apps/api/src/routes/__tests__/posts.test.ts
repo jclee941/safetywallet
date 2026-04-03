@@ -34,7 +34,7 @@ vi.mock("../../lib/phash", () => ({
   DUPLICATE_THRESHOLD: 10,
 }));
 
-vi.mock("../../lib/gemini-ai", () => ({
+vi.mock("../../lib/ai", () => ({
   getAiCredentials: vi.fn(() => null),
   classifyPost: vi.fn(async () => ({ suggestedRiskLevel: "LOW" })),
 }));
@@ -489,8 +489,7 @@ describe("routes/posts", () => {
     });
 
     it("uses executionCtx.waitUntil for async auto AI classification", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "test-model",
@@ -892,8 +891,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: skips image data when no imageUrls and handles null classification", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -938,8 +936,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: skips R2 when imageUrl is empty string", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -986,8 +983,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: skips image data when R2 returns null", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -1036,8 +1032,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: falls back to image/jpeg when no contentType", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -1089,8 +1084,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: catches Error thrown by classifyPost", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -1134,8 +1128,7 @@ describe("routes/posts", () => {
     });
 
     it("AI: catches non-Error thrown by classifyPost", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "k",
         textModel: "m",
@@ -1705,7 +1698,7 @@ describe("routes/posts", () => {
     });
 
     it("returns 503 when AI credentials are missing", async () => {
-      const { getAiCredentials } = await import("../../lib/gemini-ai");
+      const { getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce(null);
       mockGetQueue.push({ id: "p1", content: "hazard content" });
 
@@ -1722,8 +1715,7 @@ describe("routes/posts", () => {
     });
 
     it("returns 500 when AI classification fails", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",
@@ -1747,8 +1739,7 @@ describe("routes/posts", () => {
     });
 
     it("classifies post and updates urgency for high-risk result", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",
@@ -1795,8 +1786,7 @@ describe("routes/posts", () => {
     });
 
     it("classifies LOW risk post without setting isUrgent", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",
@@ -1832,8 +1822,7 @@ describe("routes/posts", () => {
     });
 
     it("skips image when fileUrl is empty", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",
@@ -1867,8 +1856,7 @@ describe("routes/posts", () => {
     });
 
     it("skips image when R2 returns null", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",
@@ -1903,8 +1891,7 @@ describe("routes/posts", () => {
     });
 
     it("falls back to image/jpeg when contentType is missing", async () => {
-      const { classifyPost, getAiCredentials } =
-        await import("../../lib/gemini-ai");
+      const { classifyPost, getAiCredentials } = await import("../../lib/ai");
       vi.mocked(getAiCredentials).mockReturnValueOnce({
         apiKey: "test-key",
         textModel: "gemini-test",

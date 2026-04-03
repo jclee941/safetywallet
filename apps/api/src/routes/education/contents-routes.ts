@@ -7,7 +7,7 @@ import { CreateCourseSchema } from "../../validators/schemas";
 import { educationContents, siteMemberships } from "../../db/schema";
 import { success, error } from "../../lib/response";
 import { logAuditWithContext } from "../../lib/audit";
-import { getAiCredentials, analyzeEducationContent } from "../../lib/gemini-ai";
+import { getAiCredentials, analyzeEducationContent } from "../../lib/ai";
 import type { AppType, CreateContentBody } from "./helpers";
 
 export const contentsCrud = new Hono<AppType>();

@@ -3,7 +3,7 @@ import type { Env, AuthContext } from "../../types";
 import { authMiddleware } from "../../middleware/auth";
 import { attendanceMiddleware } from "../../middleware/attendance";
 import crudRoutes from "./crud-routes";
-import imageRoutes from "./image-routes";
+import imageRoutes from "./images";
 
 const app = new Hono<{
   Bindings: Env;

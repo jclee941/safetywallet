@@ -10,7 +10,7 @@ SafetyWallet is an industrial safety compliance platform. Field workers use a mo
 - API: Hono + Drizzle ORM on Cloudflare Workers/D1 (`wrangler.toml`).
 - Web: Next.js 15 + React 18 static export for admin and worker apps.
 - Testing: Vitest + Testing Library + happy-dom. Playwright for E2E (`playwright.config.ts`).
-- CI: GitHub Actions (`ci.yml`) — lint → typecheck → guards → test → audit → build → d1-migrate → validate → Slack notify.
+- CI: GitLab CI/CD (`.gitlab-ci.yml`) — lint → typecheck → guards → test → audit → build → d1-migrate → validate → Slack notify.
 
 ## Directory Structure
 
@@ -26,7 +26,7 @@ SafetyWallet is an industrial safety compliance platform. Field workers use a mo
 ├── docs/                    # PRD, requirements, ops runbooks
 ├── scripts/                 # Repo tooling (verify, naming lint, anti-pattern checks)
 ├── e2e/                     # Playwright E2E tests (auth setup, admin, worker)
-├── .github/workflows/       # CI/CD and automation workflows
+├── .gitlab-ci.yml           # CI/CD pipeline configuration
 ├── wrangler.toml            # Root CF Worker config + bindings
 ├── turbo.json               # Turborepo pipeline
 └── vitest.config.ts         # Vitest workspace config
@@ -86,7 +86,7 @@ A single Cloudflare Worker handles all traffic via hostname-based routing:
 - **API → R2**: Image/video upload with Workers AI face blur + perceptual hash dedup. Served via `GET /r2/*` route.
 - **API → KV**: Auth session cache, system status flags (`fas_down`, `maintenance`).
 - **API → Queue**: Notification delivery via `NOTIFICATION_QUEUE` with DLQ fallback.
-- **Observability**: Analytics Engine for request metrics. GitHub issue auto-creation on unhandled errors.
+- **Observability**: Analytics Engine for request metrics. Issue tracking integration on unhandled errors.
 
 ## Build & Deploy
 
@@ -109,6 +109,6 @@ A single Cloudflare Worker handles all traffic via hostname-based routing:
 
 ## Notes
 
-- Root `AGENTS.md` contains safetywallet project knowledge base. Note: synced from `qws941/.github` — update sync config if project-specific content should persist.
+- Root `AGENTS.md` contains safetywallet project knowledge base.
 - FAS integration env vars (`FAS_DB_NAME`, `FAS_SITE_CD`, `FAS_SITE_NAME`) are in wrangler.toml vars section.
 - i18n is worker-only with custom runtime (not next-intl): ko, en, vi, zh locales.

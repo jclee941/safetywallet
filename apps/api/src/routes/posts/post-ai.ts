@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import type { PostsRouteApp } from "./helpers";
 import { success, error } from "../../lib/response";
-import { classifyPost, getAiCredentials } from "../../lib/gemini-ai";
+import { classifyPost, getAiCredentials } from "../../lib/ai";
 import { postImages, posts } from "../../db/schema";
 import { extractR2Key } from "./post-helpers";
 

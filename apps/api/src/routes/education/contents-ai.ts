@@ -12,7 +12,7 @@ import {
   analyzeEducationContent,
   generateQuizFromContent,
   getAiCredentials,
-} from "../../lib/gemini-ai";
+} from "../../lib/ai";
 import type { AppType } from "./helpers";
 
 export const contentsAi = new Hono<AppType>();

@@ -6,7 +6,7 @@ import {
   analyzeTbmRecord,
   generateTbmMeetingMinutes,
   getAiCredentials,
-} from "../../lib/gemini-ai";
+} from "../../lib/ai";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;

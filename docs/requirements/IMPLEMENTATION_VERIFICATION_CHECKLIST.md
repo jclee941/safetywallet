@@ -463,26 +463,24 @@ E2E 테스트는 PR #68에서 전체 제거됨. Playwright 의존성, CI 워크�
 
 ## 10. CI/CD 파이프라인
 
-### 10.1 GitHub Actions (14 워크플로)
+### 10.1 GitLab CI/CD 파이프라인
 
-| #       | 워크플로                    | 검증 항목                                    | 상태 | 비고                 |
-| ------- | --------------------------- | -------------------------------------------- | ---- | -------------------- |
-| 10.1.1  | `ci.yml`                    | CI 파이프라인 (lint, typecheck, test, build) | [ ]  | 메인 CI              |
-| 10.1.2  | `deploy-monitoring.yml`     | 배포 모니터링 (health + Slack)               | [ ]  |                      |
-| 10.1.3  | `commitlint.yml`            | 커밋 메시지 검증                             | [ ]  | Conventional Commits |
-| 10.1.4  | `auto-merge.yml`            | 자동 머지                                    | [ ]  |                      |
-| 10.1.5  | `auto-merge-dependabot.yml` | Dependabot 자동 머지                         | [ ]  |                      |
-| 10.1.6  | ~~`e2e-nightly.yml`~~       | ~~야간 E2E 테스트~~ (제거됨)                 | [x]  | PR #68에서 삭제      |
-| 10.1.7  | ~~`e2e-auto-issue.yml`~~    | ~~E2E 실패 시 이슈 생성~~ (제거됨)           | [x]  | PR #68에서 삭제      |
-| 10.1.8  | `welcome.yml`               | 신규 기여자 환영                             | [ ]  |                      |
-| 10.1.9  | `lock-threads.yml`          | 오래된 이슈/PR 잠금                          | [ ]  |                      |
-| 10.1.10 | `stale.yml`                 | 비활성 이슈 관리                             | [ ]  |                      |
-| 10.1.11 | `codex-triage.yml`          | Codex 이슈 분류                              | [ ]  |                      |
-| 10.1.12 | `release-drafter.yml`       | 릴리스 노트 초안                             | [ ]  |                      |
-| 10.1.13 | `pr-size.yml`               | PR 크기 검사 (~200 LOC)                      | [ ]  |                      |
-| 10.1.14 | `labeler.yml`               | 자동 라벨링                                  | [ ]  |                      |
-| 10.1.15 | `codex-auto-issue.yml`      | Codex 자동 이슈                              | [ ]  |                      |
-| 10.1.16 | `ssl-fix.yml`               | SSL 수정                                     | [ ]  |                      |
+| #       | Job             | 검증 항목                    | 상태 | 비고           |
+| ------- | --------------- | ---------------------------- | ---- | -------------- |
+| 10.1.1  | `lint`          | ESLint 검사                  | [ ]  | validate stage |
+| 10.1.2  | `typecheck`     | TypeScript 타입 체크         | [ ]  | validate stage |
+| 10.1.3  | `guards`        | 네이밍/안티패턴 검사         | [ ]  | validate stage |
+| 10.1.4  | `code-quality`  | 코드 품질 검사               | [ ]  | validate stage |
+| 10.1.5  | `unit-test`     | Vitest 단위 테스트           | [ ]  | test stage     |
+| 10.1.6  | `security`      | npm audit 보안 검사          | [ ]  | test stage     |
+| 10.1.7  | `sast`          | Gitleaks Secret Detection    | [ ]  | test stage     |
+| 10.1.8  | `d1-dryrun`     | D1 마이그레이션 dry-run      | [ ]  | test stage     |
+| 10.1.9  | `build:*`       | Types/Worker/Admin/API 빌드  | [ ]  | build stage    |
+| 10.1.10 | `e2e-smoke`     | Playwright E2E 스모크 테스트 | [ ]  | e2e stage      |
+| 10.1.11 | `deploy:worker` | Cloudflare Worker 배포       | [ ]  | deploy stage   |
+| 10.1.12 | `d1-migrate`    | D1 마이그레이션 적용         | [ ]  | deploy stage   |
+| 10.1.13 | `deploy-verify` | 배포 검증                    | [ ]  | deploy stage   |
+| 10.1.14 | `notify:slack`  | Slack 알림                   | [ ]  | notify stage   |
 
 ### 10.2 배포
 
@@ -494,7 +492,6 @@ E2E 테스트는 PR #68에서 전체 제거됨. Playwright 의존성, CI 워크�
 | 10.2.4 | D1 마이그레이션 실행                       | [ ]  |      |
 | 10.2.5 | 스모크 테스트                              | [ ]  |      |
 | 10.2.6 | Slack 알림                                 | [ ]  |      |
-| 10.2.7 | Actions SHA-pin 정책 (`# vN` 주석)         | [ ]  |      |
 
 ---
 
@@ -520,18 +517,18 @@ E2E 테스트는 PR #68에서 전체 제거됨. Playwright 의존성, CI 워크�
 
 ## 12. 운영 및 모니터링
 
-| #     | 검증 항목                              | 상태 | 비고                    |
-| ----- | -------------------------------------- | ---- | ----------------------- |
-| 12.1  | 요청 로거 (`request-logger.ts`)        | [ ]  | 구조화된 로깅           |
-| 12.2  | Analytics Engine 연동                  | [ ]  | `analytics.ts`          |
-| 12.3  | API 메트릭 수집 (`apiMetrics` 테이블)  | [ ]  |                         |
-| 12.4  | 동기화 오류 추적 (`syncErrors` 테이블) | [ ]  |                         |
-| 12.5  | 모니터링 대시보드                      | [ ]  | Admin `/monitoring`     |
-| 12.6  | 배포 모니터링 + Slack 알림             | [ ]  | `deploy-monitoring.yml` |
-| 12.7  | 일일/월간/동기화 크론 작업             | [ ]  | JobScheduler DO         |
-| 12.8  | ~~E2E 야간 테스트~~                    | [x]  | 제거됨 (PR #68)         |
-| 12.9  | ~~E2E 실패 자동 이슈 생성~~            | [x]  | 제거됨 (PR #68)         |
-| 12.10 | Stale 이슈/PR 관리                     | [ ]  | `stale.yml`             |
+| #     | 검증 항목                              | 상태 | 비고                         |
+| ----- | -------------------------------------- | ---- | ---------------------------- |
+| 12.1  | 요청 로거 (`request-logger.ts`)        | [ ]  | 구조화된 로깅                |
+| 12.2  | Analytics Engine 연동                  | [ ]  | `analytics.ts`               |
+| 12.3  | API 메트릭 수집 (`apiMetrics` 테이블)  | [ ]  |                              |
+| 12.4  | 동기화 오류 추적 (`syncErrors` 테이블) | [ ]  |                              |
+| 12.5  | 모니터링 대시보드                      | [ ]  | Admin `/monitoring`          |
+| 12.6  | 배포 모니터링 + Slack 알림             | [ ]  | `notify:slack` job           |
+| 12.7  | 일일/월간/동기화 크론 작업             | [ ]  | JobScheduler DO              |
+| 12.8  | ~~E2E 야간 테스트~~                    | [x]  | 제거됨 (PR #68)              |
+| 12.9  | ~~E2E 실패 자동 이슈 생성~~            | [x]  | 제거됨 (PR #68)              |
+| 12.10 | Stale 이슈/PR 관리                     | [ ]  | GitLab 스케줄 또는 수동 처리 |
 
 ---
 
@@ -612,5 +609,5 @@ npm run git:preflight       # 푸시 전 사전 검사
 | 예약 작업                | 4                   |
 | Vitest 테스트 파일       | 100                 |
 | Playwright E2E 스펙      | 75                  |
-| GitHub Actions           | 16                  |
+| GitLab CI/CD             | 1                   |
 | **전체 검증 항목**       | **~310**            |

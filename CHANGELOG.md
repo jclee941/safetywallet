@@ -2,5 +2,5 @@
 
 All notable changes to this project will be documented in this file.
 
-This changelog is automatically maintained by [Release Drafter](https://github.com/release-drafter/release-drafter).
-See [GitHub Releases](https://github.com/qws941/safetywallet/releases) for the full release history.
+This changelog documents all notable changes to the project.
+See GitLab Releases for the full release history.

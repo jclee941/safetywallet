@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import {
-  generateAnnouncementDraft,
-  getAiCredentials,
-} from "../../lib/gemini-ai";
+import { generateAnnouncementDraft, getAiCredentials } from "../../lib/ai";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -20,7 +17,7 @@ vi.mock("../../middleware/attendance", () => ({
   attendanceMiddleware: vi.fn(),
 }));
 
-vi.mock("../../lib/gemini-ai", () => ({
+vi.mock("../../lib/ai", () => ({
   generateAnnouncementDraft: vi.fn(),
   getAiCredentials: vi.fn(),
 }));

@@ -39,6 +39,64 @@ function extractCrons(content) {
   return m[1].match(/"([^"]*)"/g)?.map((s) => s.replace(/"/g, "")) ?? [];
 }
 
+/** Extract hyperdrive id (first 'id' after [[hyperdrive]] line) */
+function extractHyperdriveId(content) {
+  const lines = content.split("\n");
+  let inHyperdrive = false;
+  for (const line of lines) {
+    if (
+      /^\[\[hyperdrive\]\]/.test(line) ||
+      /^\[\[env\.\w+\.hyperdrive\]\]/.test(line)
+    ) {
+      // Only match prod (non-env) section
+      if (!/env\./.test(line)) inHyperdrive = true;
+      continue;
+    }
+    if (inHyperdrive) {
+      const m = line.match(/^\s*id\s*=\s*"([^"]*)"/);
+      if (m) return m[1];
+      if (/^\[/.test(line)) break;
+    }
+  }
+  return null;
+}
+
+/** Extract KV namespace id (first 'id' after [[kv_namespaces]] line) */
+function extractKvId(content) {
+  const lines = content.split("\n");
+  let inKv = false;
+  for (const line of lines) {
+    if (/^\[\[kv_namespaces\]\]/.test(line)) {
+      inKv = true;
+      continue;
+    }
+    if (inKv) {
+      const m = line.match(/^\s*id\s*=\s*"([^"]*)"/);
+      if (m) return m[1];
+      if (/^\[/.test(line)) break;
+    }
+  }
+  return null;
+}
+
+/** Extract assets binding from [assets] section */
+function extractAssetsBinding(content) {
+  const lines = content.split("\n");
+  let inAssets = false;
+  for (const line of lines) {
+    if (/^\[assets\]/.test(line)) {
+      inAssets = true;
+      continue;
+    }
+    if (inAssets) {
+      const m = line.match(/^\s*binding\s*=\s*"([^"]*)"/);
+      if (m) return m[1];
+      if (/^\[/.test(line)) break;
+    }
+  }
+  return null;
+}
+
 const rootContent = readToml(ROOT);
 const appContent = readToml(APP);
 
@@ -124,6 +182,19 @@ if (rootCompat !== appCompat) {
   console.log(`✓ compatibility_date: ${rootCompat}`);
 }
 
+// Check assets binding
+const rootAssetsBinding = extractAssetsBinding(rootContent);
+const appAssetsBinding = extractAssetsBinding(appContent);
+if (rootAssetsBinding !== appAssetsBinding) {
+  console.error(
+    `✗ ASSETS binding mismatch: root="${rootAssetsBinding}" app="${appAssetsBinding}"`,
+  );
+  failures++;
+} else {
+  console.log(`✓ ASSETS binding: ${rootAssetsBinding}`);
+}
+
+// Final exit gate - MUST be last
 if (failures > 0) {
   console.error(
     `\n✗ ${failures} binding(s) out of sync between root and app wrangler.toml`,
@@ -131,44 +202,4 @@ if (failures > 0) {
   process.exit(1);
 } else {
   console.log("\n✓ All critical bindings are in sync.");
-}
-
-/** Extract hyperdrive id (first 'id' after [[hyperdrive]] line) */
-function extractHyperdriveId(content) {
-  const lines = content.split("\n");
-  let inHyperdrive = false;
-  for (const line of lines) {
-    if (
-      /^\[\[hyperdrive\]\]/.test(line) ||
-      /^\[\[env\.\w+\.hyperdrive\]\]/.test(line)
-    ) {
-      // Only match prod (non-env) section
-      if (!/env\./.test(line)) inHyperdrive = true;
-      continue;
-    }
-    if (inHyperdrive) {
-      const m = line.match(/^\s*id\s*=\s*"([^"]*)"/);
-      if (m) return m[1];
-      if (/^\[/.test(line)) break;
-    }
-  }
-  return null;
-}
-
-/** Extract KV namespace id (first 'id' after [[kv_namespaces]] line) */
-function extractKvId(content) {
-  const lines = content.split("\n");
-  let inKv = false;
-  for (const line of lines) {
-    if (/^\[\[kv_namespaces\]\]/.test(line)) {
-      inKv = true;
-      continue;
-    }
-    if (inKv) {
-      const m = line.match(/^\s*id\s*=\s*"([^"]*)"/);
-      if (m) return m[1];
-      if (/^\[/.test(line)) break;
-    }
-  }
-  return null;
 }

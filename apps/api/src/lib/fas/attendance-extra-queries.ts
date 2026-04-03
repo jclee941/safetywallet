@@ -6,7 +6,8 @@ import {
   mergeAttendanceRecord,
   sortAttendanceByInTime,
 } from "./attendance-helpers";
-import { mapToFasAttendance, mapToFasEmployee } from "./mappers";
+import { mapToFasAttendance } from "./attendance-mappers";
+import { mapToFasEmployee } from "./mappers";
 import { employeeFrom, employeeSelect } from "./employee-queries";
 import {
   DEFAULT_FAS_SOURCE,

@@ -1,4 +1,5 @@
 import type { FasAttendance, FasEmployee } from "./types";
+import { mapToFasAttendance as mapToFasAttendanceCore } from "./attendance-mappers";
 
 export function mapToFasEmployee(row: Record<string, unknown>): FasEmployee {
   const stateFlag = String(row["state_flag"] || "");
@@ -26,14 +27,5 @@ export function mapToFasEmployee(row: Record<string, unknown>): FasEmployee {
 export function mapToFasAttendance(
   row: Record<string, unknown>,
 ): FasAttendance {
-  const inTime = row["in_time"];
-  const outTime = row["out_time"];
-  return {
-    emplCd: String(row["empl_cd"] || ""),
-    accsDay: String(row["accs_day"] || ""),
-    inTime: inTime ? String(inTime).padStart(4, "0") : null,
-    outTime: outTime ? String(outTime).padStart(4, "0") : null,
-    state: Number(row["state"] || 0),
-    partCd: String(row["part_cd"] || ""),
-  };
+  return mapToFasAttendanceCore(row);
 }
