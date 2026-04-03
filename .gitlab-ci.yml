@@ -79,6 +79,13 @@ guards:
   image: node:20-slim
   before_script:
     - apt-get update && apt-get install -y grep
+    - |
+      # Memory-optimized npm install
+      export NODE_OPTIONS="--max-old-space-size=4096"
+      export NPM_CONFIG_FUND="false"
+      export NPM_CONFIG_AUDIT="false"
+      npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+    - apt-get update && apt-get install -y grep
     - npm ci --cache .npm --prefer-offline
   script:
     # Block legacy runtime naming
@@ -99,6 +106,13 @@ code-quality:
   stage: validate
   image: node:20-slim
   before_script:
+    - apt-get update && apt-get install -y golang-go
+    - |
+      # Memory-optimized npm install
+      export NODE_OPTIONS="--max-old-space-size=4096"
+      export NPM_CONFIG_FUND="false"
+      export NPM_CONFIG_AUDIT="false"
+      npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
     - apt-get update && apt-get install -y golang-go
     - npm ci --cache .npm --prefer-offline
   script:
