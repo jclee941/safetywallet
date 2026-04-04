@@ -88,20 +88,22 @@ guards:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
 
-code-quality:
+anti-patterns:
   stage: validate
-  image: node:20-slim
-  before_script:
-    - apt-get update && apt-get install -y golang-go
-    - npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+  image: golang:1.24-alpine
   script:
-    # Anti-pattern checks
     - |
       files=$(find apps packages -type f \( -name '*.ts' -o -name '*.tsx' \) ! -path '*/node_modules/*' ! -path '*/.next/*' ! -path '*/dist/*' ! -path '*/out/*')
       if [ -n "$files" ]; then
         echo "$files" | xargs go run scripts/check-anti-patterns.go
       fi
-    # Naming conventions
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+
+naming:
+  stage: validate
+  script:
     - npm run lint:naming
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
