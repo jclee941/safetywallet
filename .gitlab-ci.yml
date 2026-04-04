@@ -22,7 +22,6 @@ stages:
   - build
   - e2e
   - deploy
-  - notify
 
 # Cache configuration
 cache:
@@ -310,55 +309,4 @@ deploy-verify:
     - if: $CI_COMMIT_BRANCH == "master"
 
 # =============================================================================
-# NOTIFY STAGE
-# =============================================================================
 
-notify:slack:
-  stage: notify
-  image: alpine/curl:latest
-  before_script:
-    - apk add --no-cache jq
-  needs:
-    - lint
-    - typecheck
-    - guards
-    - code-quality
-    - unit-test
-    - security
-    - sast
-    - e2e-smoke
-    - d1-migrate
-    - deploy-verify
-  script:
-    - |
-      if [ -z "$SLACK_WEBHOOK_URL" ]; then
-        echo "Slack webhook not configured. Skipping."
-        exit 0
-      fi
-
-      if [ "$CI_PIPELINE_STATUS" = "success" ]; then
-        emoji="✅"
-        status="passed"
-        color="good"
-      else
-        emoji="❌"
-        status="failed"
-        color="danger"
-      fi
-
-      short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
-      commit_msg=$(printf '%s' "$CI_COMMIT_MESSAGE" | head -1 | sed 's/["\\]/\\&/g')
-      run_url="$CI_PIPELINE_URL"
-
-      payload=$(jq -n \
-        --arg color "$color" \
-        --arg text "${emoji} *CI ${status}* — <${run_url}|safetywallet#${short_sha}>\n${commit_msg}" \
-        '{attachments: [{color: $color, blocks: [{type: "section", text: {type: "mrkdwn", text: $text}}]}]}')
-
-      curl -sS --fail-with-body --retry 2 --max-time 10 \
-        -X POST "$SLACK_WEBHOOK_URL" \
-        -H "Content-Type: application/json" \
-        -d "$payload" || echo "WARNING: Slack notification failed"
-  rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      when: always
