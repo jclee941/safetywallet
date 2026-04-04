@@ -2,7 +2,7 @@ name = "safetywallet"
 main = "src/index.ts"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat_v2"]
-workers_dev = true
+workers_dev = false
 
 # Custom domain routes (requires Zone permissions in API token)
 routes = [
@@ -111,6 +111,11 @@ new_sqlite_classes = ["RateLimiter"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["JobScheduler"]
+[assets]
+directory = "../../dist"
+binding = "ASSETS"
+not_found_handling = "none"
+run_worker_first = true
 
 
 [env.dev]
@@ -128,12 +133,6 @@ FAS_DB_NAME = "mdidev"
 FAS_SITE_CD = "10"
 FAS_SITE_NAME = "송도세브란스"
 
-
-[assets]
-directory = "../../dist"
-binding = "ASSETS"
-not_found_handling = "none"
-run_worker_first = true
 
 # Required secrets
 # Required secrets — use .dev.vars for local dev, `wrangler secret put <NAME> --env dev` for staging:

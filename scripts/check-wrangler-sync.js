@@ -97,6 +97,47 @@ function extractAssetsBinding(content) {
   return null;
 }
 
+/** Extract workers_dev value from content */
+function extractWorkersDev(content) {
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const m = line.match(/^\s*workers_dev\s*=\s*(true|false)/);
+    if (m) return m[1] === "true";
+  }
+  return null;
+}
+
+/** Check if production [assets] section exists */
+function extractProductionAssets(content) {
+  const lines = content.split("\n");
+  let inAssets = false;
+  let hasBinding = false;
+
+  for (const line of lines) {
+    // Skip env.dev sections - only check production assets
+    if (/^\[env\.dev/.test(line)) {
+      inAssets = false;
+      continue;
+    }
+
+    if (/^\[assets\]/.test(line)) {
+      inAssets = true;
+      continue;
+    }
+
+    if (inAssets) {
+      if (/^\s*binding\s*=/.test(line)) {
+        hasBinding = true;
+      }
+      // End of assets section
+      if (/^\[/.test(line)) {
+        inAssets = false;
+      }
+    }
+  }
+  return { hasProductionAssets: hasBinding };
+}
+
 const rootContent = readToml(ROOT);
 const appContent = readToml(APP);
 
@@ -104,6 +145,8 @@ const checks = [
   { label: "D1 database_id", key: "database_id" },
   { label: "Hyperdrive id", key: "id", section: "hyperdrive" },
   { label: "KV namespace id", key: "id", section: "kv_namespaces" },
+  { label: "workers_dev", type: "workers_dev" },
+  { label: "production [assets]", type: "production_assets" },
 ];
 
 let failures = 0;
@@ -137,6 +180,33 @@ for (const check of checks) {
       failures++;
     } else {
       console.log(`✓ ${check.label}: ${rootId}`);
+    }
+    continue;
+  }
+  // Check workers_dev parity
+  if (check.type === "workers_dev") {
+    const rootDev = extractWorkersDev(rootContent);
+    const appDev = extractWorkersDev(appContent);
+    if (rootDev !== appDev) {
+      console.error(`✗ ${check.label} mismatch: root=${rootDev} app=${appDev}`);
+      failures++;
+    } else {
+      console.log(`✓ ${check.label}: ${rootDev}`);
+    }
+    continue;
+  }
+
+  // Check production [assets] section
+  if (check.type === "production_assets") {
+    const rootAssets = extractProductionAssets(rootContent);
+    const appAssets = extractProductionAssets(appContent);
+    if (!appAssets.hasProductionAssets) {
+      console.error(
+        `✗ Production [assets] section missing in apps/api/wrangler.toml`,
+      );
+      failures++;
+    } else {
+      console.log(`✓ Production [assets] section present`);
     }
     continue;
   }

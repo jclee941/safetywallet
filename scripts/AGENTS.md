@@ -19,6 +19,11 @@
 - `hash-admin-password.ts` — password hash utility.
 - `create-test-user.sql` — generated SQL artifact.
 - `migrate-s4-enums.sql` — manual SQL migration helper.
+- `elasticsearch-index-template.json` — Elasticsearch index template configuration.
+- `ci-debug.go` — CI debugging and troubleshooting helper.
+- `deploy-elk-secrets.go` — ELK secrets deployment automation.
+- `deploy-verify.go` — post-deployment health verification.
+- `test-elk-integration.go` — ELK connectivity testing.
 
 ## CONVENTIONS
 
@@ -37,7 +42,7 @@
 
 ## DRIFT GUARDS
 
-- Confirm directory remains 12 entries.
+- Confirm directory remains 17 entries.
 - Confirm inventory names match exact filenames/extensions.
 - Confirm script language mix (Go/JS/TS/SQL) remains intentional.
 - Confirm renamed scripts are updated in callers (`package.json`, workflows, docs).
