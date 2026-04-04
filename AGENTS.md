@@ -1,7 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
-**Project:** SafetyWallet — Industrial safety compliance platform
 **Stack:** TypeScript · Hono · Drizzle · Next.js 15 · Cloudflare Workers · D1
+**Generated:** 2026-04-04 via init-deep
+**Status:** Active - 48 AGENTS.md files across codebase
 
 ## OVERVIEW
 
