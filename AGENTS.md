@@ -102,7 +102,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 | CF Worker bindings    | `wrangler.toml`                 | D1, R2, KV, Queue, DO, AI, Analytics, Hyperdrive     |
 | CI pipeline           | `.gitlab-ci.yml`                | lint → typecheck → guards → test → build → migrate   |
 | E2E tests             | `e2e/`                          | Playwright: auth, admin, worker flows                |
-| Verification script   | `scripts/verify.go`             | 7-step pipeline (typecheck → build)                  |
+| Scripts               | `scripts/`                      | Go/JS tooling (verify, lint, deploy, test)           |
 | Requirements specs    | `docs/requirements/`            | Feature specs, ELK prefix, etc.                      |
 
 ## CONVENTIONS
