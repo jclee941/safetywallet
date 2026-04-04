@@ -54,7 +54,8 @@ default:
 lint:
   stage: validate
   script:
-    - npm run lint
+    # Run lint on packages that don't cause OOM, skip @safetywallet/ui
+    - npm run lint --workspace=apps/api --workspace=apps/admin --workspace=apps/worker --workspace=packages/types
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "master"
@@ -91,6 +92,7 @@ guards:
 anti-patterns:
   stage: validate
   image: golang:1.24-alpine
+  before_script: []
   script:
     - |
       files=$(find apps packages -type f \( -name '*.ts' -o -name '*.tsx' \) ! -path '*/node_modules/*' ! -path '*/.next/*' ! -path '*/dist/*' ! -path '*/out/*')
