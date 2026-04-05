@@ -53,6 +53,10 @@ default:
 
 lint:
   stage: validate
+  variables:
+    # Reduce memory usage for npm ci
+    NPM_CONFIG_MAXSOCKETS: "1"
+    NODE_OPTIONS: "--max-old-space-size=2048"
   script:
     # Run lint on packages that don't cause OOM, skip @safetywallet/ui
     - npm run lint --workspace=apps/api --workspace=apps/admin --workspace=apps/worker --workspace=packages/types
