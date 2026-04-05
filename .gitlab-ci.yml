@@ -53,6 +53,8 @@ default:
 
 lint:
   stage: validate
+  # CRITICAL: Override before_script to skip npm ci (OOM killer)
+  before_script: []
   variables:
     # Reduce memory usage for npm ci
     NPM_CONFIG_MAXSOCKETS: "1"
@@ -66,6 +68,8 @@ lint:
 
 typecheck:
   stage: validate
+  # CRITICAL: Override before_script to skip npm ci
+  before_script: []
   script:
     - npm run typecheck
   rules:
@@ -109,6 +113,8 @@ anti-patterns:
 
 naming:
   stage: validate
+  # CRITICAL: Override before_script to skip npm ci
+  before_script: []
   script:
     - npm run lint:naming
   rules:
