@@ -85,13 +85,7 @@ guards:
     NODE_OPTIONS: "--max-old-space-size=1536"
   before_script:
     - apt-get update && apt-get install -y grep
-    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
-  script:
-  stage: validate
-  image: node:20-slim
-  before_script:
-    - apt-get update && apt-get install -y grep
-    - npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+    - npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1)
   script:
     # Block legacy runtime naming
     - |
@@ -127,7 +121,7 @@ naming:
     NPM_CONFIG_MAXSOCKETS: "1"
     NODE_OPTIONS: "--max-old-space-size=1536"
   before_script:
-    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
+    - npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1)
   script:
     - npm run lint:naming
   rules:
@@ -246,7 +240,7 @@ e2e-smoke:
   image: mcr.microsoft.com/playwright:v1.51.1-jammy
   needs: [build:types, build:worker, build:admin]
   before_script:
-    - npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+    - npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1)
   script:
     - npx playwright install --with-deps chromium
     - npx playwright test --project=worker-smoke --project=admin-smoke
@@ -315,7 +309,7 @@ deploy-verify:
     url: https://safetywallet.jclee.me
   before_script:
     - apt-get update && apt-get install -y golang-go
-    - npm ci --cache .npm --prefer-offline --no-audit || npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1
+    - npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --ignore-scripts --maxsockets=1)
   script:
     - |
       echo "Building deploy-verify tool..."
