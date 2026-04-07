@@ -58,7 +58,6 @@ lint:
     NODE_OPTIONS: "--max-old-space-size=1536"
   before_script:
     - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
-
   script:
     - npm run lint --workspace=apps/api --workspace=apps/admin --workspace=apps/worker --workspace=packages/types
   rules:
