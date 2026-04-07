@@ -54,11 +54,22 @@ default:
 lint:
   stage: validate
   variables:
+  variables:
+    NPM_CONFIG_MAXSOCKETS: "1"
+    NODE_OPTIONS: "--max-old-space-size=1536"
+  before_script:
+    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
+
     # Reduce memory usage for npm ci
     NPM_CONFIG_MAXSOCKETS: "1"
     NODE_OPTIONS: "--max-old-space-size=2048"
+=======
+    NPM_CONFIG_MAXSOCKETS: "1"
+    NODE_OPTIONS: "--max-old-space-size=1536"
+  before_script:
+    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
+>>>>>>> fix/cicd-final
   script:
-    # Run lint on packages that don't cause OOM, skip @safetywallet/ui
     - npm run lint --workspace=apps/api --workspace=apps/admin --workspace=apps/worker --workspace=packages/types
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -66,6 +77,11 @@ lint:
 
 typecheck:
   stage: validate
+  variables:
+    NPM_CONFIG_MAXSOCKETS: "1"
+    NODE_OPTIONS: "--max-old-space-size=1536"
+  before_script:
+    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
   script:
     - npm run typecheck
   rules:
@@ -109,6 +125,11 @@ anti-patterns:
 
 naming:
   stage: validate
+  variables:
+    NPM_CONFIG_MAXSOCKETS: "1"
+    NODE_OPTIONS: "--max-old-space-size=1536"
+  before_script:
+    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
   script:
     - npm run lint:naming
   rules:
@@ -317,4 +338,3 @@ deploy-verify:
     - if: $CI_COMMIT_BRANCH == "master"
 
 # =============================================================================
-
