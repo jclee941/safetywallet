@@ -54,21 +54,11 @@ default:
 lint:
   stage: validate
   variables:
-  variables:
     NPM_CONFIG_MAXSOCKETS: "1"
     NODE_OPTIONS: "--max-old-space-size=1536"
   before_script:
     - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
 
-    # Reduce memory usage for npm ci
-    NPM_CONFIG_MAXSOCKETS: "1"
-    NODE_OPTIONS: "--max-old-space-size=2048"
-=======
-    NPM_CONFIG_MAXSOCKETS: "1"
-    NODE_OPTIONS: "--max-old-space-size=1536"
-  before_script:
-    - npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1 || (sleep 5 && npm ci --cache .npm --prefer-offline --no-audit --maxsockets=1)
->>>>>>> fix/cicd-final
   script:
     - npm run lint --workspace=apps/api --workspace=apps/admin --workspace=apps/worker --workspace=packages/types
   rules:
