@@ -19,7 +19,6 @@ import imagesApp from "./images";
 import alertingApp from "./alerting";
 import settlementsApp from "./settlements";
 import distributionsApp from "./distributions";
-import issuesApp from "./issues";
 import educationApp from "./education";
 import pointsApp from "./points";
 
@@ -47,7 +46,6 @@ app.route("/", imagesApp);
 app.route("/", alertingApp);
 app.route("/", settlementsApp);
 app.route("/", distributionsApp);
-app.route("/", issuesApp);
 app.route("/", educationApp);
 app.route("/", pointsApp);
 

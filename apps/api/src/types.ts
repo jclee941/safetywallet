@@ -60,8 +60,6 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   // VAPID contact for web push
   VAPID_SUBJECT?: string;
-  // GitLab API token for issue management
-  GITLAB_TOKEN?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL_TEXT?: string;
   OPENROUTER_MODEL_MULTIMODAL?: string;

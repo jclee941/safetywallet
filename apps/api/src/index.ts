@@ -36,7 +36,6 @@ import { analyticsMiddleware } from "./middleware/analytics";
 import { requestLoggerMiddleware } from "./middleware/request-logger";
 
 import { createLogger } from "./lib/logger";
-import { createErrorIssue } from "./lib/auto-issue";
 import { authMiddleware } from "./middleware/auth";
 
 const logger = createLogger("index");
@@ -435,18 +434,6 @@ app.onError((err, c) => {
     method: c.req.method,
   });
 
-  // Auto-create GitLab issue for unhandled (non-HTTP) errors
-  if (!(err instanceof Error && "getResponse" in err) && c.env.GITLAB_TOKEN) {
-    c.executionCtx.waitUntil(
-      createErrorIssue({
-        error: err instanceof Error ? err : new Error(String(err)),
-        endpoint: c.req.path,
-        method: c.req.method,
-        gitlabToken: c.env.GITLAB_TOKEN,
-        kv: c.env.KV,
-      }),
-    );
-  }
   // Handle HTTPException properly (auth errors, validation errors, etc.)
   if (err instanceof Error && "getResponse" in err) {
     const httpErr = err as { status?: number; message: string };

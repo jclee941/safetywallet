@@ -1,18 +1,22 @@
 # CI/CD Automation Debugging Guide
 
-Debugging GitLab CI/CD pipelines for SafetyWallet.
+Debugging GitHub Actions CI/CD pipelines for SafetyWallet.
 
 ## Pipeline Overview
 
+The `.github/workflows/ci.yml` workflow runs these jobs on push to `master` and on pull requests:
+
 ```
-┌─────────┐   ┌──────────┐   ┌───────┐   ┌───────┐   ┌─────┐   ┌────────┐
-│ prepare │ → │ validate │ → │  test │ → │ build │ → │ e2e │ → │ deploy │
-└─────────┘   └──────────┘   └───────┘   └───────┘   └─────┘   └────────┘
-                │ lint       │ unit-test   │ apps      │       │
-                │ typecheck  │ security    │ packages  │       │
-                │ guards     │ sast        │           │       │
-                │ code-quality│ d1-dryrun  │           │       │
+┌────┐   ┌────────┐   ┌────────────┐   ┌───────┐   ┌───────┐   ┌─────┐   ┌─────────┐   ┌──────────┐
+│ ci │ → │ guards │ → │ code-quality│ → │ tests │ → │ build │ → │ e2e │ → │ d1-migrate│ → │ validate │
+└────┘   └────────┘   └────────────┘   └───────┘   └───────┘   └─────┘   └─────────┘   └──────────┘
+  │ lint       │ legacy name  │ anti-patterns   │ unit-test   │ worker    │ smoke    │ remote   │ aggregate
+  │ typecheck  │ wrangler sync│ naming          │ security    │ admin     │          │ migrate  │ + notify
+                                                │ sast        │ api       │          │          │
+                                                │ d1-dryrun   │           │          │          │
 ```
+
+Deployment is handled separately by **Cloudflare Git Integration** — Cloudflare auto-deploys on every push to `master` without needing a `wrangler deploy` step in CI.
 
 ## Quick Debugging Commands
 
@@ -31,15 +35,24 @@ npm test
 npm run build
 ```
 
-### GitLab CI Local Runner
+### GitHub Actions Local Runner
+
+Use [`act`](https://github.com/nektos/act) to run GitHub Actions workflows locally:
 
 ```bash
-# Install GitLab Runner locally
-sudo curl -L --output /usr/local/bin/gitlab-runner https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64
-sudo chmod +x /usr/local/bin/gitlab-runner
+# Install act (macOS: brew install act, Linux: see act README)
+brew install act   # macOS
+# or curl -fsSL https://raw.githubusercontent.com/nektos/act/master/install.sh | bash
 
-# Run a specific job locally (requires GitLab credentials)
-gitlab-runner exec docker unit-test
+# Run the entire CI workflow
+act push
+
+# Run a specific job
+act -j unit-test
+act -j build
+
+# Use a smaller runner image (recommended)
+act -j ci --container-architecture linux/amd64 -P ubuntu-latest=catthehacker/ubuntu:act-latest
 ```
 
 ## Common CI/CD Failures
@@ -168,7 +181,7 @@ diff wrangler.toml apps/api/wrangler.toml
 
 ### Validate Stage
 
-Jobs: `lint`, `typecheck`, `guards`, `code-quality`
+Jobs: `ci` (lint + typecheck), `guards`, `code-quality`
 
 ```bash
 # Run entire validate stage locally
@@ -192,7 +205,7 @@ cd apps/api && wrangler d1 migrations apply safetywallet-db --local --dry-run
 
 ### Build Stage
 
-Jobs: `build`
+Jobs: `build` (matrix over worker, admin, api)
 
 ```bash
 # Full build
@@ -200,11 +213,14 @@ npm run build
 
 # Static export aggregation
 npm run build:static
+
+# Build a single matrix target
+npm run build --workspace=apps/worker
 ```
 
 ### E2E Stage
 
-Jobs: `e2e-test`
+Jobs: `e2e-smoke`
 
 ```bash
 # Requires 1Password credentials
@@ -221,13 +237,18 @@ op run --env-file=.env.e2e -- npx playwright test --headed
 
 CI/CD uses these environment variables:
 
-| Variable             | Purpose                  | Local Equivalent            |
-| -------------------- | ------------------------ | --------------------------- |
-| `CI`                 | Indicates CI environment | N/A (set automatically)     |
-| `CI_PIPELINE_SOURCE` | Trigger type             | N/A                         |
-| `CI_COMMIT_BRANCH`   | Branch name              | `git branch --show-current` |
-| `NPM_CONFIG_CACHE`   | npm cache dir            | `~/.npm`                    |
-| `TURBO_CACHE_DIR`    | Turbo cache dir          | `node_modules/.cache/turbo` |
+| Variable                | Purpose                  | Local Equivalent             |
+| ----------------------- | ------------------------ | ---------------------------- |
+| `CI`                    | Indicates CI environment | N/A (set automatically)      |
+| `GITHUB_EVENT_NAME`     | Trigger type             | `push`, `pull_request`       |
+| `GITHUB_REF_NAME`       | Branch name              | `git branch --show-current`  |
+| `GITHUB_SHA`            | Commit SHA               | `git rev-parse HEAD`         |
+| `NODE_VERSION`          | Node version             | Pinned in workflow (20)      |
+| `CLOUDFLARE_API_TOKEN`  | CF deploys / d1-migrate  | `op read "op://.../token"`   |
+| `CLOUDFLARE_ACCOUNT_ID` | CF account               | `op read "op://.../account"` |
+| `SLACK_WEBHOOK_URL`     | Notify job               | Optional; notify is skipped  |
+
+Secrets are configured in **Repo Settings → Secrets and variables → Actions**.
 
 ## Caching Issues
 
@@ -250,6 +271,13 @@ npm run clean
 npm ci
 npm run build
 ```
+
+GitHub Actions caches:
+
+- `actions/cache@<sha>` stores `.turbo` keyed on `hashFiles('**/package-lock.json')`
+- `actions/setup-node@<sha>` with `cache: "npm"` caches `~/.npm`
+
+Invalidate by bumping `package-lock.json` or changing the cache key suffix.
 
 ### Problem: Stale cache
 
@@ -276,12 +304,13 @@ npm ci
 ### Download CI Artifacts
 
 ```bash
-# Via GitLab UI
-# Project → CI/CD → Pipelines → Select pipeline → Jobs → Download artifacts
+# Via GitHub CLI
+gh run list --workflow=ci.yml --limit 5
+gh run view <run-id>
+gh run download <run-id>
 
-# Via GitLab CLI
-gl pipeline get --project-id=<id> --id=<pipeline-id>
-gl job artifact download --project-id=<id> --job-id=<job-id>
+# Via GitHub UI
+# Repo → Actions → Workflow run → Artifacts section
 ```
 
 ### Examine Test Reports
@@ -319,6 +348,8 @@ wrangler d1 migrations apply safetywallet-db --local --dry-run
 
 ### SAST (Secret Detection)
 
+The `sast` job uses `gitleaks/gitleaks-action` pinned to a SHA.
+
 ```bash
 # Run gitleaks locally
 docker run --rm -v $(pwd):/code zricethezav/gitleaks:latest detect --verbose --source /code
@@ -332,10 +363,15 @@ gitleaks detect --verbose
 
 ### Rules Evaluation
 
-CI jobs have rules based on:
+CI jobs run on:
 
-- `CI_PIPELINE_SOURCE == "merge_request_event"`
-- `CI_COMMIT_BRANCH == "master"`
+- `push` to `master`
+- `pull_request` targeting `master`
+
+Some jobs have additional `if:` conditions:
+
+- `d1-dryrun`: `if: github.event_name == 'pull_request'`
+- `d1-migrate`: `if: github.event_name == 'push' && github.ref == 'refs/heads/master'`
 
 Simulate locally:
 
@@ -343,23 +379,27 @@ Simulate locally:
 # Check current branch
 git branch --show-current
 
-# Simulate MR pipeline
-CI_PIPELINE_SOURCE=merge_request_event CI_COMMIT_BRANCH=$(git branch --show-current) gitlab-runner exec docker lint
+# Simulate PR pipeline with act
+act pull_request
+
+# Simulate push to master
+act push --eventpath <(printf '{"ref":"refs/heads/master"}')
 ```
 
 ## Pipeline Logs
 
 ### Access Logs
 
-1. GitLab UI: Project → CI/CD → Pipelines → Job → Job logs
-2. Download raw logs for analysis
-3. Search for "ERROR" or "FAIL"
+1. GitHub UI: Repo → Actions → Workflow run → Job → Step logs
+2. GitHub CLI: `gh run view <run-id> --log` or `gh run view <run-id> --log-failed`
+3. Download raw logs: `gh run download <run-id>` or from the UI "Download log archive"
+4. Search for `::error::`, `::warning::`, or `FAIL`
 
 ### Common Log Patterns
 
 | Pattern                   | Meaning               | Action                           |
 | ------------------------- | --------------------- | -------------------------------- |
-| `ERROR:`                  | Fatal error           | Check previous lines for context |
+| `::error::`               | GitHub Actions error  | Check previous lines for context |
 | `FAIL`                    | Test failure          | Run test locally                 |
 | `cache miss`              | Cache not used        | Check cache key configuration    |
 | `found 0 vulnerabilities` | Security scan passed  | Normal                           |
@@ -384,9 +424,9 @@ TURBO_DEBUG=1 npm run build
 
 If jobs are failing due to resource contention:
 
-- Check `parallel:` settings in `.gitlab-ci.yml`
-- Review job dependencies (`needs:`)
-- Adjust resource limits
+- Check `needs:` dependencies in `.github/workflows/ci.yml`
+- Check `matrix.fail-fast` setting on the `build` job
+- Use `concurrency.cancel-in-progress` to avoid duplicate runs on rapid pushes
 
 ## Pre-Commit Validation
 
@@ -411,8 +451,8 @@ go run scripts/git-preflight.go
    ```
 
 2. **Identify failing job:**
-   - Check GitLab pipeline status
-   - Read job logs
+   - `gh run list --workflow=ci.yml --limit 5`
+   - `gh run view <run-id> --log-failed`
 
 3. **Reproduce locally:**
 
@@ -429,25 +469,22 @@ go run scripts/git-preflight.go
    git checkout -b fix/ci-issue
    # Make fixes
    git commit -m "fix: resolve CI failure"
-   git push
+   git push -u origin fix/ci-issue
+   gh pr create
    ```
 
 5. **Verify fix:**
-   - Create MR
+   - Create PR
    - Wait for CI to pass
-   - Merge to master
+   - Squash merge to master
 
 ### Rollback Pipeline
 
-If deployment failed:
-
-```bash
-# Rollback to previous version
-# See docs/cloudflare-operations.md for rollback procedures
-```
+If deployment failed, see `docs/cloudflare-operations.md` for rollback procedures. Cloudflare Git Integration allows rolling back to previous deployments directly from the Cloudflare Dashboard.
 
 ## Resources
 
-- [GitLab CI/CD Documentation](https://docs.gitlab.com/ee/ci/)
-- [GitLab Runner Documentation](https://docs.gitlab.com/runner/)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [GitHub Actions Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
+- [act — Run GitHub Actions Locally](https://github.com/nektos/act)
 - [SafetyWallet Operations Runbook](cloudflare-operations.md)

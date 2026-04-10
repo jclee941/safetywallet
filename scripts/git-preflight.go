@@ -33,18 +33,18 @@ func runPreflight() error {
 	}
 	fmt.Println("origin reachable")
 
-	// Step 3: Verify authentication (GitLab)
+	// Step 3: Verify authentication (GitHub)
 	fmt.Println("\n[3/6] Verify authentication")
-	// Try glab (GitLab CLI) first, fall back to git credential check
-	if err := runCmd("glab", "auth", "status"); err != nil {
-		// glab not available, try git credential check
-		fmt.Println("glab not available, checking git credentials...")
+	// Try gh (GitHub CLI) first, fall back to git credential check
+	if err := runCmd("gh", "auth", "status"); err != nil {
+		// gh not available, try git credential check
+		fmt.Println("gh not available, checking git credentials...")
 		if err := runCmd("git", "credential", "fill"); err != nil {
 			// Fallback: just check if we can fetch
-			fmt.Println("Note: Manual credential verification skipped. Ensure GitLab token is configured.")
+			fmt.Println("Note: Manual credential verification skipped. Ensure GitHub token is configured.")
 		}
 	} else {
-		fmt.Println("glab auth ok")
+		fmt.Println("gh auth ok")
 	}
 
 	// Step 4: Refresh remote tracking refs

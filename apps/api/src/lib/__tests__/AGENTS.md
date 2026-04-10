@@ -7,7 +7,7 @@ Guards adapter contracts, utility behavior, and failure/retry semantics.
 
 ## INVENTORY
 
-- Unit suites (31): `alerting.test.ts`, `audit.test.ts`, `auto-issue.test.ts`, `crypto.test.ts`, `csp.test.ts`, `device-registrations.test.ts`, `face-blur.test.ts`, `fas-attendance-helpers.test.ts`, `fas-connection.test.ts`, `fas-index.test.ts`, `fas-mappers.test.ts`, `fas-mariadb.test.ts`, `fas-sync.test.ts`, `gemini-ai.test.ts`, `image-privacy.test.ts`, `jwt.test.ts`, `key-manager.test.ts`, `logger.test.ts`, `notification-queue.test.ts`, `observability.test.ts`, `phash.test.ts`, `points-engine.test.ts`, `rate-limit.test.ts`, `response.test.ts`, `session-cache.test.ts`, `sms.test.ts`, `state-machine.test.ts`, `sync-lock.test.ts`, `types.test.ts`, `web-push.test.ts`, `workers-ai.test.ts`.
+- Unit suites (30): `alerting.test.ts`, `audit.test.ts`, `crypto.test.ts`, `csp.test.ts`, `device-registrations.test.ts`, `face-blur.test.ts`, `fas-attendance-helpers.test.ts`, `fas-connection.test.ts`, `fas-index.test.ts`, `fas-mappers.test.ts`, `fas-mariadb.test.ts`, `fas-sync.test.ts`, `gemini-ai.test.ts`, `image-privacy.test.ts`, `jwt.test.ts`, `key-manager.test.ts`, `logger.test.ts`, `notification-queue.test.ts`, `observability.test.ts`, `phash.test.ts`, `points-engine.test.ts`, `rate-limit.test.ts`, `response.test.ts`, `session-cache.test.ts`, `sms.test.ts`, `state-machine.test.ts`, `sync-lock.test.ts`, `types.test.ts`, `web-push.test.ts`, `workers-ai.test.ts`.
 - Local doc: `AGENTS.md`.
 
 ## CONVENTIONS

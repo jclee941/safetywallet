@@ -116,15 +116,16 @@ Response:
 
 ### CI/CD Verification Job
 
-The GitLab CI pipeline includes automatic verification after D1 migration:
+The GitHub Actions workflow includes automatic verification after D1 migration:
 
 ```yaml
 deploy-verify:
-  stage: deploy
+  name: Deploy Verify
+  runs-on: ubuntu-latest
   needs: [d1-migrate]
-  script:
-    - sleep 30 # Wait for deployment propagation
-    - ./scripts/deploy-verify --api https://safetywallet.jclee.me --retries 5
+  steps:
+    - run: sleep 30 # Wait for deployment propagation
+    - run: ./scripts/deploy-verify --api https://safetywallet.jclee.me --retries 5
 ```
 
 ### Verification Script
@@ -381,18 +382,24 @@ git push origin v1.2.3
 
 ## CI/CD Integration
 
-### GitLab CI Pipeline
+### GitHub Actions Pipeline
 
-The `.gitlab-ci.yml` includes these verification stages:
+The `.github/workflows/ci.yml` includes these verification jobs:
 
 ```yaml
-stages:
-  - validate # lint, typecheck, guards
-  - test # unit, security, sast
-  - build # types, worker, admin, api
-  - e2e # smoke tests
-  - deploy # d1-migrate, deploy-verify
-  - notify # slack notification
+jobs:
+  ci: # lint, typecheck
+  guards: # config guards
+  code-quality: # naming, anti-patterns
+  unit-test: # vitest
+  security: # npm audit
+  sast: # gitleaks secret scan
+  d1-dryrun: # D1 migration dry-run (PR only)
+  build: # matrix build (worker, admin, api)
+  e2e-smoke: # playwright smoke tests
+  d1-migrate: # D1 migrate (master push)
+  validate: # aggregate status
+  notify: # slack notification
 ```
 
 ### Required Environment Variables

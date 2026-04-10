@@ -74,7 +74,7 @@ Deploy execution is CI-only.
 
 - Trigger: Push to `master` → Cloudflare Git Integration auto-deploys
 - No dedicated deploy workflow — CF handles build and deploy via git integration
-- Post-deploy monitoring: `.gitlab-ci.yml` `notify:slack` job watches completion
+- Post-deploy monitoring: GitHub Actions `.github/workflows/ci.yml` `notify` job watches completion
 
 ### CI/CD Staging
 

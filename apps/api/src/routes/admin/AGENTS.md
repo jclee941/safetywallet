@@ -7,12 +7,12 @@ Owns admin-only read/write and operational route handlers.
 
 ## INVENTORY
 
-- Top-level route files (19): `access-policies.ts`, `alerting.ts`, `attendance.ts`, `audit.ts`, `distributions.ts`, `education.ts`, `export.ts`, `helpers.ts`, `images.ts`, `index.ts`, `issues.ts`, `monitoring.ts`, `points.ts`, `recommendations.ts`, `settlements.ts`, `stats.ts`, `sync-errors.ts`, `trends.ts`, `votes.ts`.
+- Top-level route files (18): `access-policies.ts`, `alerting.ts`, `attendance.ts`, `audit.ts`, `distributions.ts`, `education.ts`, `export.ts`, `helpers.ts`, `images.ts`, `index.ts`, `monitoring.ts`, `points.ts`, `recommendations.ts`, `settlements.ts`, `stats.ts`, `sync-errors.ts`, `trends.ts`, `votes.ts`.
 - Feature subdirs (3): `fas/`, `posts/`, `users/`.
 - `fas/` files (6): `helpers.ts`, `hyperdrive-routes.ts`, `index.ts`, `query-routes.ts`, `sync-workers-routes.ts`, `types.ts`.
 - `posts/` files (5): `delete-handlers.ts`, `index.ts`, `list-routes.ts`, `moderation-routes.ts`, `review-handlers.ts`.
 - `users/` files (2): `index.ts`, `routes.ts`.
-- Admin tests dir: `__tests__/` with 22 `*.test.ts` files.
+- Admin tests dir: `__tests__/` with 21 `*.test.ts` files.
 
 ## CONVENTIONS
 

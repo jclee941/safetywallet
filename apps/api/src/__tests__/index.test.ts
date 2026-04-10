@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { app } from "../index";
 import worker from "../index";
-import { createErrorIssue } from "../lib/auto-issue";
 import { fasGetAllEmployeesPaginated } from "../lib/fas";
 import {
   syncFasEmployeesToD1,
@@ -68,10 +67,6 @@ vi.mock("../middleware/auth", () => ({
       await next();
     },
   ),
-}));
-
-vi.mock("../lib/auto-issue", () => ({
-  createErrorIssue: vi.fn(async () => undefined),
 }));
 
 vi.mock("../lib/fas", () => ({
@@ -838,35 +833,6 @@ describe("API Index", () => {
       expect(res.status).toBe(500);
       expect(json.error.code).toBe("INTERNAL_ERROR");
       expect(json.error.message).toBe("boom-onerror");
-    });
-
-    it("creates GitHub issue for non-http errors when token exists", async () => {
-      mockEnv.ENVIRONMENT = "production";
-      mockEnv.GITLAB_TOKEN = "gh-token";
-      mockEnv.R2 = {
-        get: vi.fn().mockRejectedValue(new Error("boom-onerror")),
-      };
-
-      const executionCtx = {
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-        props: {},
-      };
-
-      const res = await app.fetch(
-        new Request("http://localhost/r2/images/a.png"),
-        mockEnv,
-        executionCtx,
-      );
-      const json = (await res.json()) as {
-        error: { code: string; message: string };
-      };
-
-      expect(res.status).toBe(500);
-      expect(json.error.code).toBe("INTERNAL_ERROR");
-      expect(json.error.message).toBe("An error occurred");
-      expect(createErrorIssue).toHaveBeenCalledTimes(1);
-      expect(executionCtx.waitUntil).toHaveBeenCalledTimes(1);
     });
 
     it("maps thrown http-like 403 errors", async () => {
