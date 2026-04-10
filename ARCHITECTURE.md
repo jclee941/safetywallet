@@ -10,7 +10,7 @@ SafetyWallet is an industrial safety compliance platform. Field workers use a mo
 - API: Hono + Drizzle ORM on Cloudflare Workers/D1 (`wrangler.toml`).
 - Web: Next.js 15 + React 18 static export for admin and worker apps.
 - Testing: Vitest + Testing Library + happy-dom. Playwright for E2E (`playwright.config.ts`).
-- CI: GitLab CI/CD (`.gitlab-ci.yml`) — lint → typecheck → guards → test → audit → build → d1-migrate → validate → Slack notify.
+- CI: GitHub Actions (`.github/workflows/ci.yml`) — lint → typecheck → guards → test → audit → build → d1-migrate → validate → Slack notify.
 
 ## Directory Structure
 
@@ -26,7 +26,7 @@ SafetyWallet is an industrial safety compliance platform. Field workers use a mo
 ├── docs/                    # PRD, requirements, ops runbooks
 ├── scripts/                 # Repo tooling (verify, naming lint, anti-pattern checks)
 ├── e2e/                     # Playwright E2E tests (auth setup, admin, worker)
-├── .gitlab-ci.yml           # CI/CD pipeline configuration
+├── .github/workflows/     # CI/CD pipeline configuration (GitHub Actions)
 ├── wrangler.toml            # Root CF Worker config + bindings
 ├── turbo.json               # Turborepo pipeline
 └── vitest.config.ts         # Vitest workspace config

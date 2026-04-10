@@ -9,7 +9,7 @@
     "build": "wrangler deploy --env=\"\" --dry-run --outdir=dist --config wrangler.toml",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "deploy": "node -e \"console.error('Manual deploy is disabled. Deployment is controlled by GitLab CI (git-ref based).'); process.exit(1)\"",
+    "deploy": "node -e \"console.error('Manual deploy is disabled. Deployment is controlled by GitHub Actions + Cloudflare Git Integration (git-ref based).'); process.exit(1)\"",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply safetywallet-db --local --config wrangler.toml",

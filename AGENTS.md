@@ -34,7 +34,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 ├── docs/                    # PRD, requirements specs, ops runbooks
 ├── scripts/                 # Go/JS tooling (verify, naming lint, anti-pattern checks)
 ├── e2e/                     # Playwright E2E tests (auth setup, admin, worker flows)
-├── .gitlab-ci.yml           # CI/CD: GitLab pipeline (lint → typecheck → guards → test → build → migrate)
+├── .github/workflows/     # CI/CD: GitHub Actions (lint → typecheck → guards → test → build → migrate)
 ├── wrangler.toml            # Root CF Worker config + all bindings
 ├── turbo.json               # Turborepo pipeline (types → ui → apps)
 └── playwright.config.ts     # 6 Playwright projects
@@ -101,7 +101,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 | Shared types/DTOs     | `packages/types/src/`           | Enums, DTOs, Zod schemas shared across apps          |
 | Shared UI components  | `packages/ui/src/components/`   | shadcn/ui base + Tailwind v4 theme tokens            |
 | CF Worker bindings    | `wrangler.toml`                 | D1, R2, KV, Queue, DO, AI, Analytics, Hyperdrive     |
-| CI pipeline           | `.gitlab-ci.yml`                | lint → typecheck → guards → test → build → migrate   |
+| CI pipeline           | `.github/workflows/ci.yml`      | lint → typecheck → guards → test → build → migrate   |
 | E2E tests             | `e2e/`                          | Playwright: auth, admin, worker flows                |
 | Scripts               | `scripts/`                      | Go/JS tooling (verify, lint, deploy, test)           |
 | Requirements specs    | `docs/requirements/`            | Feature specs, ELK prefix, etc.                      |
