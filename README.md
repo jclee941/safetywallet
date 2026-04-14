@@ -7,11 +7,20 @@
 현장 근로자의 위험 보고, 출퇴근 관리, 안전 포인트 적립을 하나의 PWA에서 처리합니다.
 관리자는 리뷰, 정산, 교육, 모니터링을 대시보드에서 함께 봅니다.
 
-[![CI](https://github.com/jclee941/safetywallet/actions/workflows/ci.yml/badge.svg)](https://github.com/jclee941/safetywallet/actions/workflows/ci.yml)
-![Version](https://img.shields.io/github/v/tag/jclee941/safetywallet?label=version&sort=semver)
-![Tests](https://img.shields.io/badge/tests-3%2C521%20passed-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-96%25+-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+<p align="center">
+  <a href="./ARCHITECTURE.md">아키텍처</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./CODE_STYLE.md">코딩 컨벤션</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./.env.example">환경 변수</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./docs/">문서</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/jclee941/safetywallet/actions/workflows/ci.yml"><img src="https://github.com/jclee941/safetywallet/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>&nbsp;&nbsp;
+  <img src="https://img.shields.io/github/v/tag/jclee941/safetywallet?label=version&sort=semver" alt="Version" />&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/tests-3%2C521%20passed-brightgreen" alt="Tests" />&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/coverage-96%25+-blue" alt="Coverage" />&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+</p>
 
 </div>
 
@@ -33,14 +42,12 @@
 
 ## 기술 스택
 
-```
-Frontend    Next.js 15.5.10 (Static Export) · React 18.3.1 · Tailwind v4 · Zustand · TanStack Query
-Backend     Hono · Drizzle ORM · Cloudflare Workers · D1 (SQLite)
-Infra       Cloudflare R2 · KV · Queues · Durable Objects · Workers AI · Hyperdrive
-Testing     Vitest · Testing Library · Playwright · 3,521 unit tests · 341 test files · 4 E2E smoke tests
-CI/CD       GitHub Actions (13 jobs) · Semantic Versioning · Slack 알림
-i18n        ko (기본) · en · vi · zh
-```
+- **Frontend** — Next.js 15.5.10 (Static Export) · React 18.3.1 · Tailwind v4 · Zustand · TanStack Query
+- **Backend** — Hono · Drizzle ORM · Cloudflare Workers · D1 (SQLite)
+- **Infra** — Cloudflare R2 · KV · Queues · Durable Objects · Workers AI · Hyperdrive
+- **Testing** — Vitest · Testing Library · Playwright · 3,521 unit tests · 341 test files · 4 E2E smoke tests
+- **CI/CD** — GitHub Actions (13 jobs) · Semantic Versioning · Slack 알림
+- **i18n** — ko (기본) · en · vi · zh
 
 ## 프로젝트 구조
 
@@ -75,9 +82,8 @@ safetywallet/
 
 ### 환경 설정
 
-1. `.env.example`을 참고해서 `.env`를 만듭니다.
-2. E2E 테스트는 `.env.e2e`와 1Password CLI를 함께 씁니다.
-3. Cloudflare 바인딩 값은 `wrangler.toml`에서 확인합니다.
+> [!TIP]
+> `.env.example`을 참고해서 `.env`를 만듭니다. E2E 테스트는 `.env.e2e`와 1Password CLI를 함께 씁니다. Cloudflare 바인딩 값은 `wrangler.toml`에서 확인합니다.
 
 ### 설치 및 실행
 
@@ -130,6 +136,9 @@ admin.safetywallet.jclee.me  → 관리자 SPA (Static)
 
 D1 (SQLite) 기반 34개 테이블, 8개 도메인입니다.
 
+<details>
+<summary><b>D1 (SQLite) 34개 테이블, 8개 도메인</b></summary>
+
 | 도메인      | 테이블 수 | 주요 테이블                                                                                  |
 | ----------- | --------: | -------------------------------------------------------------------------------------------- |
 | 사용자/인증 |         4 | users, pushSubscriptions, sites, siteMemberships                                             |
@@ -141,7 +150,12 @@ D1 (SQLite) 기반 34개 테이블, 8개 도메인입니다.
 | 시스템      |         4 | joinCodeHistory, deviceRegistrations, pointPolicies, syncErrors                              |
 | 모니터링    |         2 | apiMetrics, imageAiAnalysis                                                                  |
 
+</details>
+
 ### Cloudflare 바인딩
+
+<details>
+<summary><b>Cloudflare 바인딩 (11개)</b></summary>
 
 | 바인딩             | 타입             | 용도                                |
 | ------------------ | ---------------- | ----------------------------------- |
@@ -157,16 +171,19 @@ D1 (SQLite) 기반 34개 테이블, 8개 도메인입니다.
 | AI                 | Workers AI       | 얼굴 블러, 콘텐츠 분석              |
 | ANALYTICS          | Analytics Engine | 요청 분석, 메트릭                   |
 
+</details>
+
 ### 데이터 흐름
 
-- Client → API: `apiFetch` 래퍼로 auth headers, retry, 401 refresh를 처리합니다.
-- Offline → reconnect sync: IndexedDB 큐 `safetywallet_offline_queue`를 재연결 시 동기화합니다.
-- API → D1: Drizzle ORM으로 DB binding을 사용합니다.
-- API → FAS: Hyperdrive로 외부 직원 DB 동기화를 처리합니다.
-- API → R2: 이미지와 동영상을 올리고, Workers AI 얼굴 블러와 perceptual hash 중복 제거를 적용합니다.
-- API → KV: 세션 캐시와 시스템 상태 플래그를 저장합니다.
-- API → Queue: 알림 전달을 하고, 실패 시 DLQ로 넘깁니다.
-- Observability: Analytics Engine으로 요청 메트릭을 모읍니다.
+> [!NOTE]
+> **Client → API**: `apiFetch` 래퍼로 auth headers, retry, 401 refresh를 처리합니다.  
+> **Offline → reconnect sync**: IndexedDB 큐 `safetywallet_offline_queue`를 재연결 시 동기화합니다.  
+> **API → D1**: Drizzle ORM으로 DB binding을 사용합니다.  
+> **API → FAS**: Hyperdrive로 외부 직원 DB 동기화를 처리합니다.  
+> **API → R2**: 이미지와 동영상을 올리고, Workers AI 얼굴 블러와 perceptual hash 중복 제거를 적용합니다.  
+> **API → KV**: 세션 캐시와 시스템 상태 플래그를 저장합니다.  
+> **API → Queue**: 알림 전달을 하고, 실패 시 DLQ로 넘깁니다.  
+> **Observability**: Analytics Engine으로 요청 메트릭을 모읍니다.
 
 ## CI/CD 파이프라인
 
@@ -248,12 +265,6 @@ op run --env-file=.env.e2e -- npx playwright test
 - **PR 크기**: 200 LOC 이하 권장
 - **타입 안전성**: `as any`, `@ts-ignore`, `@ts-expect-error` 금지
 - **브랜치**: trunk-based development, 장기 feature 브랜치 금지
-
-## 참고 문서
-
-- [ARCHITECTURE.md](./ARCHITECTURE.md) · 상세 기술 아키텍처
-- [CODE_STYLE.md](./CODE_STYLE.md) · 코딩 컨벤션과 패턴
-- [.env.example](./.env.example) · 환경 변수 레퍼런스
 
 ## 라이선스
 

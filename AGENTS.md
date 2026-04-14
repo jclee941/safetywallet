@@ -2,7 +2,7 @@
 
 **Stack:** TypeScript · Hono · Drizzle · Next.js 15 · Cloudflare Workers · D1
 **Generated:** 2026-04-04 via init-deep
-**Status:** Active - 48 AGENTS.md files across codebase
+**Status:** Active - 47 AGENTS.md files across codebase
 
 ## OVERVIEW
 
@@ -65,13 +65,16 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 
 ## DATABASE SCHEMA
 
-34 tables in 5 domains defined in `apps/api/src/db/schema.ts`:
+34 tables in 8 domains defined in `apps/api/src/db/schema.ts`:
 
-- **Identity** (7): users, sites, siteMemberships, sessions, userProfiles, userDevices, userNotificationPreferences.
-- **Safety** (8): posts, postImages, actions, reviews, disputes, approvals, recommendations, announcements.
-- **Points/Votes** (6): pointTransactions, pointPolicies, pointSettlements, votes, voteCandidates, voteRecords.
-- **Attendance** (4): attendanceRecords, attendanceSyncErrors, fasEmployeeCache, attendanceSettings.
-- **Education** (8): educationContents, educationQuizzes, educationQuizQuestions, educationQuizAttempts, educationQuizAnswers, educationAssignments, educationProgress, educationCategories.
+- **Identity** (4): users, pushSubscriptions, sites, siteMemberships.
+- **Safety** (4): posts, postImages, reviews, pointsLedger.
+- **Safety Actions** (7): actions, actionImages, auditLogs, announcements, attendance, accessPolicies, manualApprovals.
+- **Votes** (5): votes, voteCandidates, votePeriods, recommendations, disputes.
+- **Education** (5): educationContents, quizzes, quizQuestions, quizAttempts, educationCompletions.
+- **Training** (3): statutoryTrainings, tbmRecords, tbmAttendees.
+- **System** (4): joinCodeHistory, deviceRegistrations, pointPolicies, syncErrors.
+- **Monitoring** (2): apiMetrics, imageAiAnalysis.
 
 ## DATA FLOW
 
@@ -89,7 +92,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 | Task                  | Location                        | Notes                                                |
 | --------------------- | ------------------------------- | ---------------------------------------------------- |
 | API routes            | `apps/api/src/routes/`          | 18 modules, admin routes nested in `admin/`          |
-| Database schema       | `apps/api/src/db/schema.ts`     | 34 D1 tables across 5 domains                        |
+| Database schema       | `apps/api/src/db/schema.ts`     | 34 D1 tables across 8 domains                        |
 | D1 migrations         | `apps/api/migrations/`          | Sequential SQL files, applied in CI                  |
 | Auth logic            | `apps/api/src/lib/auth.ts`      | JWT + KST day check + KV cache + D1 fallback         |
 | Middleware chain      | `apps/api/src/middleware/`      | CORS → logging → analytics → security headers        |
@@ -111,7 +114,7 @@ Field workers use a mobile PWA to report hazards, log attendance, and earn safet
 - **Monorepo**: npm workspaces + Turborepo. Build order: `types` → `ui` → `api` + `admin` + `worker`.
 - **Hosting**: Single CF Worker. Hostname routing: `safetywallet.jclee.me/api/*` → Hono, `safetywallet.jclee.me/*` → worker PWA, `admin.safetywallet.jclee.me/*` → admin SPA.
 - **Auth**: JWT with KST same-day midnight expiry. Triple-layer validation. Three-tier role permissions (`WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`).
-- **Database**: Drizzle ORM + D1 (SQLite). 34 tables in 5 domains: Identity, Safety, Points/Votes, Attendance, Education.
+  **Database**: Drizzle ORM + D1 (SQLite). 34 tables in 8 domains: Identity, Safety, Safety Actions, Votes, Education, Training, System, Monitoring.
 - **State management**: Zustand (persisted stores) + TanStack Query in both frontends.
 - **i18n**: Worker-only, custom runtime (not next-intl). 4 locales: ko (default), en, vi, zh. Keys: `section.camelCaseKey`.
 - **Deploy**: Git-ref driven only via Cloudflare Git Integration. Manual deploy scripts exit non-zero.

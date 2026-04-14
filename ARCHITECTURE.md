@@ -4,11 +4,11 @@ SafetyWallet is an industrial safety compliance platform. Field workers use a mo
 
 ## Tech Stack
 
-- Runtime: Node 20, npm 10 (`.nvmrc`, `package.json`).
+- Runtime: Node 20, npm 10.8.2 (`.nvmrc`, `package.json`).
 - Language: TypeScript strict across all workspaces.
 - Monorepo: Turborepo (`turbo.json`) with npm workspaces.
 - API: Hono + Drizzle ORM on Cloudflare Workers/D1 (`wrangler.toml`).
-- Web: Next.js 15 + React 18 static export for admin and worker apps.
+- Web: Next.js 15 + React 18.3.1 static export for admin and worker apps.
 - Testing: Vitest + Testing Library + happy-dom. Playwright for E2E (`playwright.config.ts`).
 - CI: GitHub Actions (`.github/workflows/ci.yml`) — lint → typecheck → guards → test → audit → build → d1-migrate → validate → Slack notify.
 
@@ -69,13 +69,16 @@ A single Cloudflare Worker handles all traffic via hostname-based routing:
 
 ## Database Schema
 
-34 tables in 5 domains defined in `apps/api/src/db/schema.ts`:
+34 tables in 8 domains defined in `apps/api/src/db/schema.ts`:
 
-- **Identity** (7): users, sites, siteMemberships, sessions, userProfiles, userDevices, userNotificationPreferences.
-- **Safety** (8): posts, postImages, actions, reviews, disputes, approvals, recommendations, announcements.
-- **Points/Votes** (6): pointTransactions, pointPolicies, pointSettlements, votes, voteCandidates, voteRecords.
-- **Attendance** (4): attendanceRecords, attendanceSyncErrors, fasEmployeeCache, attendanceSettings.
-- **Education** (8): educationContents, educationQuizzes, educationQuizQuestions, educationQuizAttempts, educationQuizAnswers, educationAssignments, educationProgress, educationCategories.
+- **Identity** (4): users, pushSubscriptions, sites, siteMemberships.
+- **Safety** (4): posts, postImages, reviews, pointsLedger.
+- **Safety Actions** (7): actions, actionImages, auditLogs, announcements, attendance, accessPolicies, manualApprovals.
+- **Votes** (5): votes, voteCandidates, votePeriods, recommendations, disputes.
+- **Education** (5): educationContents, quizzes, quizQuestions, quizAttempts, educationCompletions.
+- **Training** (3): statutoryTrainings, tbmRecords, tbmAttendees.
+- **System** (4): joinCodeHistory, deviceRegistrations, pointPolicies, syncErrors.
+- **Monitoring** (2): apiMetrics, imageAiAnalysis.
 
 ## Data Flow
 
