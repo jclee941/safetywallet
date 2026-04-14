@@ -187,11 +187,12 @@ jobs:
       - run: npm ci
       - run: npm run build --workspace=packages/types
 
+      - name: Create assets stub for API dry-run build
+        if: matrix.app == 'api'
+        run: mkdir -p dist
+
       - name: Build ${{ matrix.app }}
         run: npm run build --workspace=apps/${{ matrix.app }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ matrix.app == 'api' && secrets.CLOUDFLARE_API_TOKEN || '' }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ matrix.app == 'api' && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
 
       - name: Upload build output
         if: matrix.app != 'api' && github.event_name == 'push'
