@@ -7,6 +7,11 @@ import {
   generateTbmMeetingMinutes,
   getAiCredentials,
 } from "../../lib/ai";
+import { getAiCredentials as getAiCredentialsBase } from "../../lib/ai/base";
+import {
+  analyzeTbmRecord as analyzeTbmRecordSub,
+  generateTbmMeetingMinutes as generateTbmMinutesSub,
+} from "../../lib/ai/tbm";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -103,6 +108,12 @@ vi.mock("@hono/zod-validator", () => ({
 const mockGet = vi.fn();
 const mockAll = vi.fn();
 const mockRun = vi.fn();
+const mockReturningGetQueue: unknown[] = [];
+function dequeueReturningGet() {
+  return mockReturningGetQueue.length > 0
+    ? mockReturningGetQueue.shift()
+    : undefined;
+}
 
 function makeSelectChain() {
   const chain: Record<string, unknown> = {};
@@ -125,7 +136,7 @@ function makeInsertChain() {
   chain.values = vi.fn(self);
   chain.returning = vi.fn(self);
   chain.onConflictDoNothing = vi.fn(self);
-  chain.get = mockGet;
+  chain.get = vi.fn(() => dequeueReturningGet());
   chain.run = mockRun;
   return new Proxy(chain, {
     get(target, prop) {
@@ -143,7 +154,7 @@ function makeUpdateChain() {
   chain.set = vi.fn(self);
   chain.where = vi.fn(self);
   chain.returning = vi.fn(self);
-  chain.get = mockGet;
+  chain.get = vi.fn(() => dequeueReturningGet());
   chain.run = mockRun;
   return new Proxy(chain, {
     get(target, prop) {
@@ -291,12 +302,22 @@ vi.mock("../../lib/audit", () => ({
   logAuditWithContext: vi.fn(),
 }));
 
-vi.mock("../../lib/gemini-ai", () => ({
+vi.mock("../../lib/ai", () => ({
   analyzeEducationContent: vi.fn(async () => null),
   generateQuizFromContent: vi.fn(async () => null),
   analyzeTbmRecord: vi.fn(async () => null),
   generateTbmMeetingMinutes: vi.fn(async () => null),
   getAiCredentials: vi.fn(() => null),
+}));
+vi.mock("../../lib/ai/base", () => ({
+  getAiCredentials: vi.fn(() => null),
+  callAiJson: vi.fn(async () => null),
+  callOpenRouterJson: vi.fn(async () => null),
+  buildTextPart: vi.fn(() => ({ type: "text" as const, text: "" })),
+}));
+vi.mock("../../lib/ai/tbm", () => ({
+  analyzeTbmRecord: vi.fn(async () => null),
+  generateTbmMeetingMinutes: vi.fn(async () => null),
 }));
 
 vi.mock("../../lib/logger", () => ({
@@ -346,6 +367,7 @@ describe("education", () => {
     mockGet.mockReset();
     mockAll.mockReset();
     mockRun.mockReset();
+    mockReturningGetQueue.length = 0;
     mockDb.select.mockImplementation(() => makeSelectChain());
     mockDb.insert.mockImplementation(() => makeInsertChain());
     mockDb.update.mockImplementation(() => makeUpdateChain());
@@ -387,7 +409,7 @@ describe("education", () => {
     });
 
     it("creates content as SUPER_ADMIN", async () => {
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      mockReturningGetQueue.push({
         id: "content-1",
         siteId: "site-1",
         title: "Test",
@@ -483,7 +505,7 @@ describe("education", () => {
     });
 
     it("creates quiz as SUPER_ADMIN", async () => {
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      mockReturningGetQueue.push({
         id: "quiz-1",
         siteId: "site-1",
         title: "Quiz",
@@ -563,13 +585,13 @@ describe("education", () => {
     it("creates quiz question", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "q1", siteId: "site-1" })
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({
-          id: "qq1",
-          question: "Q?",
-          questionType: "SINGLE_CHOICE",
-          imageUrl: null,
-        });
+        .mockResolvedValueOnce(undefined);
+      mockReturningGetQueue.push({
+        id: "qq1",
+        question: "Q?",
+        questionType: "SINGLE_CHOICE",
+        imageUrl: null,
+      });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/quizzes/q1/questions",
@@ -680,8 +702,8 @@ describe("education", () => {
     it("creates statutory training as SUPER_ADMIN", async () => {
       mockGet
         .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ role: "WORKER" })
-        .mockResolvedValueOnce({ id: "st-1", siteId: "site-1" });
+        .mockResolvedValueOnce({ role: "WORKER" });
+      mockReturningGetQueue.push({ id: "st-1", siteId: "site-1" });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/statutory",
@@ -734,7 +756,7 @@ describe("education", () => {
     });
 
     it("creates TBM record as SUPER_ADMIN", async () => {
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      mockReturningGetQueue.push({
         id: "tbm-1",
         siteId: "site-1",
         topic: "Safety",
@@ -984,12 +1006,12 @@ describe("education", () => {
     it("creates OX question", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "q1", siteId: "site-1" })
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({
-          id: "qq-ox",
-          questionType: "OX",
-          imageUrl: null,
-        });
+        .mockResolvedValueOnce(undefined);
+      mockReturningGetQueue.push({
+        id: "qq-ox",
+        questionType: "OX",
+        imageUrl: null,
+      });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/quizzes/q1/questions",
@@ -1048,12 +1070,12 @@ describe("education", () => {
     it("creates IMAGE question with imageUrl", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "q1", siteId: "site-1" })
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({
-          id: "qq-img",
-          questionType: "IMAGE",
-          imageUrl: "/r2/quiz-images/test.jpg",
-        });
+        .mockResolvedValueOnce(undefined);
+      mockReturningGetQueue.push({
+        id: "qq-img",
+        questionType: "IMAGE",
+        imageUrl: "/r2/quiz-images/test.jpg",
+      });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/quizzes/q1/questions",
@@ -1128,8 +1150,8 @@ describe("education", () => {
           options: ["A", "B"],
           correctAnswer: 0,
           correctAnswerText: null,
-        })
-        .mockResolvedValueOnce({ id: "qq1", question: "updated" });
+        });
+      mockReturningGetQueue.push({ id: "qq1", question: "updated" });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/quizzes/q1/questions/qq1",
@@ -1295,13 +1317,13 @@ describe("education", () => {
         })
         .mockResolvedValueOnce({ role: "WORKER" })
         .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ defaultAmount: 20 })
-        .mockResolvedValueOnce({
-          id: "attempt-mismatch",
-          score: 0,
-          passed: true,
-          pointsAwarded: 20,
-        });
+        .mockResolvedValueOnce({ defaultAmount: 20 });
+      mockReturningGetQueue.push({
+        id: "attempt-mismatch",
+        score: 0,
+        passed: true,
+        pointsAwarded: 20,
+      });
       mockAll.mockResolvedValueOnce([
         { id: "qq1", correctAnswer: 0, orderIndex: 0 },
         { id: "qq2", correctAnswer: 1, orderIndex: 1 },
@@ -1568,8 +1590,8 @@ describe("education", () => {
           title: "Safety",
           aiAnalysis: '{"ok":true}',
         })
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: "quiz-1", siteId: "site-1" });
+        .mockResolvedValueOnce(null);
+      mockReturningGetQueue.push({ id: "quiz-1", siteId: "site-1" });
       mockAll.mockResolvedValueOnce([{ id: "qq-1", quizId: "quiz-1" }]);
 
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
@@ -1607,7 +1629,9 @@ describe("education", () => {
     });
 
     it("returns 500 for POST /tbm/:id/analyze when AI fails", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet.mockResolvedValueOnce({
         id: "t1",
         siteId: "site-1",
@@ -1621,8 +1645,10 @@ describe("education", () => {
     });
 
     it("analyzes TBM successfully", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
-      vi.mocked(analyzeTbmRecord).mockResolvedValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
+      vi.mocked(analyzeTbmRecordSub).mockResolvedValueOnce({
         risk: "high",
       } as never);
       mockGet.mockResolvedValueOnce({
@@ -1648,7 +1674,9 @@ describe("education", () => {
     });
 
     it("returns 500 for POST /tbm/:id/generate-minutes when AI fails", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet.mockResolvedValueOnce({
         record: {
           id: "t1",
@@ -1671,8 +1699,10 @@ describe("education", () => {
     });
 
     it("generates TBM meeting minutes", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
-      vi.mocked(generateTbmMeetingMinutes).mockResolvedValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
+      vi.mocked(generateTbmMinutesSub).mockResolvedValueOnce({
         summary: "minutes",
       } as never);
       mockGet.mockResolvedValueOnce({
@@ -2025,7 +2055,9 @@ describe("education", () => {
     });
 
     it("returns 404 for POST /tbm/:id/generate-minutes when TBM is missing", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet.mockResolvedValueOnce(undefined);
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
@@ -2037,7 +2069,9 @@ describe("education", () => {
     });
 
     it("returns 403 for POST /tbm/:id/generate-minutes when worker is not admin", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet
         .mockResolvedValueOnce({
           record: {
@@ -2295,7 +2329,9 @@ describe("education", () => {
     });
 
     it("returns 404 for POST /tbm/:id/analyze when TBM is missing", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet.mockResolvedValueOnce(undefined);
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
@@ -2548,13 +2584,12 @@ describe("education", () => {
     });
 
     it("creates content as SITE_ADMIN member", async () => {
-      mockGet
-        .mockResolvedValueOnce({ id: "admin-membership" })
-        .mockResolvedValueOnce({
-          id: "content-1",
-          siteId: "site-1",
-          title: "Safety",
-        });
+      mockGet.mockResolvedValueOnce({ id: "admin-membership" });
+      mockReturningGetQueue.push({
+        id: "content-1",
+        siteId: "site-1",
+        title: "Safety",
+      });
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
         "/contents",
@@ -2584,12 +2619,12 @@ describe("education", () => {
     it("creates statutory training as SITE_ADMIN with active target member", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "admin-membership" })
-        .mockResolvedValueOnce({ id: "target-membership" })
-        .mockResolvedValueOnce({
-          id: "st-1",
-          siteId: "site-1",
-          userId: "worker-1",
-        });
+        .mockResolvedValueOnce({ id: "target-membership" });
+      mockReturningGetQueue.push({
+        id: "st-1",
+        siteId: "site-1",
+        userId: "worker-1",
+      });
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
         "/statutory",
@@ -2674,12 +2709,12 @@ describe("education", () => {
     it("creates TBM with explicit leader when leader is active member", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "admin-membership" })
-        .mockResolvedValueOnce({ id: "leader-membership" })
-        .mockResolvedValueOnce({
-          id: "tbm-1",
-          siteId: "site-1",
-          topic: "Safety",
-        });
+        .mockResolvedValueOnce({ id: "leader-membership" });
+      mockReturningGetQueue.push({
+        id: "tbm-1",
+        siteId: "site-1",
+        topic: "Safety",
+      });
 
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
@@ -2702,8 +2737,8 @@ describe("education", () => {
     it("updates TBM as site admin", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "tbm-1", siteId: "site-1" })
-        .mockResolvedValueOnce({ id: "admin-membership" })
-        .mockResolvedValueOnce({ id: "tbm-1", topic: "Updated" });
+        .mockResolvedValueOnce({ id: "admin-membership" });
+      mockReturningGetQueue.push({ id: "tbm-1", topic: "Updated" });
 
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
@@ -2737,7 +2772,9 @@ describe("education", () => {
     });
 
     it("returns 403 for POST /tbm/:id/analyze when worker is not site admin", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({ key: "x" } as never);
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
+        key: "x",
+      } as never);
       mockGet
         .mockResolvedValueOnce({
           id: "tbm-1",
@@ -2867,8 +2904,12 @@ describe("education", () => {
     it("updates content successfully as site admin", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "c1", siteId: "site-1", title: "Before" })
-        .mockResolvedValueOnce({ id: "admin-membership" })
-        .mockResolvedValueOnce({ id: "c1", siteId: "site-1", title: "After" });
+        .mockResolvedValueOnce({ id: "admin-membership" });
+      mockReturningGetQueue.push({
+        id: "c1",
+        siteId: "site-1",
+        title: "After",
+      });
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
         "/contents/c1",
@@ -2984,7 +3025,8 @@ describe("education", () => {
       vi.mocked(analyzeEducationContent).mockResolvedValueOnce(
         aiResult as never,
       );
-      mockGet.mockResolvedValueOnce({ id: "m1" }).mockResolvedValueOnce({
+      mockGet.mockResolvedValueOnce({ id: "m1" });
+      mockReturningGetQueue.push({
         id: "c1",
         siteId: "s1",
         title: "T",
@@ -3107,7 +3149,8 @@ describe("education", () => {
       vi.mocked(analyzeEducationContent).mockResolvedValueOnce({
         score: 77,
       } as never);
-      mockGet.mockResolvedValueOnce({ id: "m1" }).mockResolvedValueOnce({
+      mockGet.mockResolvedValueOnce({ id: "m1" });
+      mockReturningGetQueue.push({
         id: "c1",
         siteId: "s1",
         title: "T",
@@ -3161,20 +3204,20 @@ describe("education", () => {
     it("PATCH /contents/:id sends all optional spread fields", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "c1", siteId: "s1", title: "Old" })
-        .mockResolvedValueOnce({ id: "m1" })
-        .mockResolvedValueOnce({
-          id: "c1",
-          siteId: "s1",
-          title: "New",
-          description: "desc",
-          contentType: "DOCUMENT",
-          contentUrl: "/url",
-          thumbnailUrl: "/thumb.jpg",
-          durationMinutes: 30,
-          externalSource: "YOUTUBE",
-          externalId: "yt-1",
-          sourceUrl: "https://example.com",
-        });
+        .mockResolvedValueOnce({ id: "m1" });
+      mockReturningGetQueue.push({
+        id: "c1",
+        siteId: "s1",
+        title: "New",
+        description: "desc",
+        contentType: "DOCUMENT",
+        contentUrl: "/url",
+        thumbnailUrl: "/thumb.jpg",
+        durationMinutes: 30,
+        externalSource: "YOUTUBE",
+        externalId: "yt-1",
+        sourceUrl: "https://example.com",
+      });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/contents/c1",
@@ -3275,8 +3318,8 @@ describe("education", () => {
     it("updates quiz with all optional fields", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "q1", siteId: "site-1" })
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ id: "q1", title: "Updated" });
+        .mockResolvedValueOnce(undefined);
+      mockReturningGetQueue.push({ id: "q1", title: "Updated" });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/quizzes/q1",
@@ -3368,16 +3411,16 @@ describe("education", () => {
     });
 
     it("POST /tbm with AI fire-and-forget analyzes and generates minutes", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
         key: "x",
       } as never);
-      vi.mocked(analyzeTbmRecord).mockResolvedValueOnce({
+      vi.mocked(analyzeTbmRecordSub).mockResolvedValueOnce({
         riskLevel: "high",
       } as never);
-      vi.mocked(generateTbmMeetingMinutes).mockResolvedValueOnce({
+      vi.mocked(generateTbmMinutesSub).mockResolvedValueOnce({
         summary: "Meeting notes",
       } as never);
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      mockReturningGetQueue.push({
         id: "tbm-new",
         siteId: "site-1",
         topic: "Safety topic",
@@ -3408,17 +3451,17 @@ describe("education", () => {
       );
       await Promise.allSettled(wp);
       expect(res.status).toBe(201);
-      expect(analyzeTbmRecord).toHaveBeenCalled();
-      expect(generateTbmMeetingMinutes).toHaveBeenCalled();
+      expect(analyzeTbmRecordSub).toHaveBeenCalled();
+      expect(generateTbmMinutesSub).toHaveBeenCalled();
     });
 
     it("POST /tbm AI fire-and-forget skips update when analysis returns null", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
         key: "x",
       } as never);
-      vi.mocked(analyzeTbmRecord).mockResolvedValueOnce(null as never);
-      vi.mocked(generateTbmMeetingMinutes).mockResolvedValueOnce(null as never);
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      vi.mocked(analyzeTbmRecordSub).mockResolvedValueOnce(null as never);
+      vi.mocked(generateTbmMinutesSub).mockResolvedValueOnce(null as never);
+      mockReturningGetQueue.push({
         id: "tbm-new",
         siteId: "site-1",
         topic: "Safety",
@@ -3450,14 +3493,14 @@ describe("education", () => {
     });
 
     it("POST /tbm AI fire-and-forget catches analysis and minutes errors", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
         key: "x",
       } as never);
-      vi.mocked(analyzeTbmRecord).mockRejectedValueOnce(new Error("AI fail"));
-      vi.mocked(generateTbmMeetingMinutes).mockRejectedValueOnce(
-        "string error",
+      vi.mocked(analyzeTbmRecordSub).mockRejectedValueOnce(
+        new Error("AI fail"),
       );
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      vi.mocked(generateTbmMinutesSub).mockRejectedValueOnce("string error");
+      mockReturningGetQueue.push({
         id: "tbm-new",
         siteId: "site-1",
         topic: "Safety",
@@ -3505,8 +3548,8 @@ describe("education", () => {
     it("updates TBM with all optional spread fields", async () => {
       mockGet
         .mockResolvedValueOnce({ id: "t1", siteId: "site-1" })
-        .mockResolvedValueOnce({ id: "m1" })
-        .mockResolvedValueOnce({ id: "t1", topic: "Updated" });
+        .mockResolvedValueOnce({ id: "m1" });
+      mockReturningGetQueue.push({ id: "t1", topic: "Updated" });
       const { app, env } = await createApp(makeAuth("SITE_ADMIN"));
       const res = await app.request(
         "/tbm/t1",
@@ -3552,13 +3595,13 @@ describe("education", () => {
     it("creates statutory training with expirationDate", async () => {
       mockGet
         .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ id: "target-m" })
-        .mockResolvedValueOnce({
-          id: "st-new",
-          siteId: "site-1",
-          userId: "worker-1",
-          expirationDate: 1768435200,
-        });
+        .mockResolvedValueOnce({ id: "target-m" });
+      mockReturningGetQueue.push({
+        id: "st-new",
+        siteId: "site-1",
+        userId: "worker-1",
+        expirationDate: 1768435200,
+      });
       const { app, env } = await createApp(makeAuth("SUPER_ADMIN"));
       const res = await app.request(
         "/statutory",
@@ -3761,14 +3804,14 @@ describe("education", () => {
     });
 
     it("POST /tbm AI fire-and-forget with reversed error types covers remaining ternary branches", async () => {
-      vi.mocked(getAiCredentials).mockReturnValueOnce({
+      vi.mocked(getAiCredentialsBase).mockReturnValueOnce({
         key: "x",
       } as never);
-      vi.mocked(analyzeTbmRecord).mockRejectedValueOnce("non-Error string");
-      vi.mocked(generateTbmMeetingMinutes).mockRejectedValueOnce(
+      vi.mocked(analyzeTbmRecordSub).mockRejectedValueOnce("non-Error string");
+      vi.mocked(generateTbmMinutesSub).mockRejectedValueOnce(
         new Error("minutes fail"),
       );
-      mockGet.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      mockReturningGetQueue.push({
         id: "tbm-rev",
         siteId: "site-1",
         topic: "Reversed",
