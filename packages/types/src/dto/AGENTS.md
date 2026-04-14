@@ -3,42 +3,46 @@
 ## PURPOSE
 
 - Domain DTO contract layer under `@safetywallet/types`.
-- Single DTO module split by feature domain; no runtime logic.
+- Split by feature file; no runtime logic.
 
 ## INVENTORY
 
-- `AGENTS.md` — local DTO documentation contract.
-- `index.ts` — DTO barrel re-exporting all domain modules.
+- Directory total: 17 files = 16 TypeScript files + `AGENTS.md`.
+- `index.ts` — DTO barrel re-exporting every module.
 - `action.dto.ts` — action create/detail/list/update payloads.
-- `analytics.dto.ts` — dashboard trend and distribution payloads.
+- `analytics.dto.ts` — dashboard trend/distribution payloads.
 - `announcement.dto.ts` — announcement CRUD/list payloads.
 - `auth.dto.ts` — login/session/refresh/register payloads.
-- `education.dto.ts` — education content/quiz/attempt/statutory/TBM payloads.
+- `education-ai.dto.ts` — AI recommendation and analysis payloads.
+- `education-content.dto.ts` — education content metadata and delivery payloads.
+- `education-quiz.dto.ts` — quiz/question/attempt payloads.
+- `education-training.dto.ts` — statutory training and TBM payloads.
+- `education.dto.ts` — shared education aggregate payloads.
 - `points.dto.ts` — ledger/history/balance/policy payloads.
 - `post.dto.ts` — post list/detail/create/filter/media payloads.
-- `review.dto.ts` — moderation review commands/results payloads.
+- `review.dto.ts` — moderation review command/result payloads.
 - `site.dto.ts` — site/member/admin dashboard payloads.
-- `user.dto.ts` — user profile and profile update payloads.
+- `user.dto.ts` — user profile/update payloads.
 - `vote.dto.ts` — vote period/candidate/result/export payloads.
 
 ## CONVENTIONS
 
 - Keep each domain in its matching `*.dto.ts` file.
 - Import shared enums from `../enums` for enum-backed fields.
-- Keep optional (`?`) vs nullable (`| null`) semantics exact.
+- Preserve optional (`?`) vs nullable (`| null`) semantics exactly.
 - Add/remove DTO files only with synchronized `index.ts` export updates.
-- Prefer explicit interface/type names with domain prefix.
+- Prefer explicit domain-prefixed interface/type names.
 
 ## ANTI-PATTERNS
 
-- Cross-domain dumping into unrelated DTO module.
+- Cross-domain dumping into unrelated DTO modules.
 - Inline enum string unions duplicating canonical enums.
-- Contract widening via `any`, broad `Record<string, unknown>`, or cast escapes.
+- Contract widening via `any`, broad `Record<string, unknown>`, cast escapes.
 - Dead DTO exports not referenced by API/apps/tests.
 
 ## DRIFT GUARDS
 
-- Confirm directory still has 13 files (12 TypeScript + `AGENTS.md`).
-- Confirm barrel exports every domain module exactly once.
-- Confirm new DTO fields preserve backward compatibility expectations.
+- Confirm directory still has 17 files before doc edits.
+- Confirm barrel exports all 15 DTO modules exactly once.
+- Confirm new DTO fields preserve backward-compatibility expectations.
 - Confirm parent `packages/types/AGENTS.md` counts stay aligned.

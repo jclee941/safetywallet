@@ -2,54 +2,46 @@
 
 ## PURPOSE
 
-- App Router route tree contract for `src/app`.
-- Keep route composition, redirects, and route boundaries consistent.
+- Route-tree contract for `src/app`.
+- Inventory only; subtree detail stays in child `AGENTS.md` files.
 
 ## INVENTORY
 
-- `AGENTS.md` - route-layer contract.
-- `layout.tsx` - root HTML/body shell + skip link + providers wrapper.
-- `page.tsx` - hydration-gated root redirect.
-- `error.tsx` - app-level route error fallback.
-- `globals.css` - app-wide CSS entry.
-- `actions/` - actions list + detail routes + segment boundary.
-- `announcements/` - announcements list route.
-- `education/` - education list/view/quiz routes + segment boundary.
-- `home/` - post-login landing route.
-- `login/` - login route + route-local client component.
-- `points/` - point history route.
-- `posts/` - post list/new/view routes + segment boundary.
-- `profile/` - profile route + segment boundary.
-- `register/` - legacy registration entry route.
-- `votes/` - voting route + segment boundary.
-- `__tests__/` - route-level tests.
-- Route contracts in subtree:
-  - `actions/AGENTS.md`
-  - `education/AGENTS.md`
-  - `posts/AGENTS.md`
+- Root files (5): `AGENTS.md`, `layout.tsx`, `page.tsx`, `error.tsx`, `globals.css`.
+- Root tests (2): `__tests__/page.test.tsx`, `__tests__/segment-errors.test.tsx`.
+- `actions/` — 12 files: root list route, segment error, `view/` detail subtree, local tests, local `AGENTS.md`.
+- `announcements/` — 3 files: `AGENTS.md`, `page.tsx`, `__tests__/page.test.tsx`.
+- `education/` — 21 files: list route, segment error, `view/` subtree, `quiz-take/` subtree, tests, local `AGENTS.md`.
+- `home/` — 2 files: `page.tsx`, `__tests__/page.test.tsx`.
+- `login/` — 4 files: `page.tsx`, `login-client.tsx`, route tests.
+- `points/` — 2 files: `page.tsx`, `__tests__/page.test.tsx`.
+- `posts/` — 16 files: list route, segment error, `new/` subtree, `view/` subtree, tests, local `AGENTS.md`.
+- `profile/` — 3 files: `page.tsx`, `error.tsx`, `__tests__/page.test.tsx`.
+- `register/` — 2 files: `page.tsx`, `__tests__/page.test.tsx`.
+- `votes/` — 3 files: `page.tsx`, `error.tsx`, `__tests__/page.test.tsx`.
+- Local route docs (4): `actions/AGENTS.md`, `announcements/AGENTS.md`, `education/AGENTS.md`, `posts/AGENTS.md`.
 
 ## CONVENTIONS
 
-- Route page surface currently includes 16 `page.tsx` files.
-- Error boundary files currently exist at app root + `actions` + `education` + `posts` + `profile` + `votes`.
-- Root redirect waits for store hydration; unauthenticated -> `/login/`, authenticated -> `/home/`.
-- Redirect targets remain trailing-slash normalized in root/login/register flow.
-- Detail routes use query params (`?id=...`) instead of path params in current design.
-- Route files compose hooks/components; transport and cache logic stay outside this directory.
+- Page surfaces: 16 `page.tsx` files across the tree.
+- Segment error boundaries: app root + `actions` + `education` + `posts` + `profile` + `votes`.
+- Root redirect stays hydration-gated; unauthenticated -> `/login/`, authenticated -> `/home/`.
+- Root/login/register redirects stay trailing-slash normalized.
+- Detail routes stay query-param based; no path-param split in current tree.
+- Route files compose hooks/components; transport/cache logic stays outside `src/app`.
 
 ## ANTI-PATTERNS
 
-- No data-fetching client duplication inside pages when domain hook exists.
-- No registration form implementation under `register/`; route stays redirect-only.
-- No removal of root hydration gate before redirect logic.
-- No segment-level error boundary deletion for volatile domains.
-- No hardcoded copy in pages; use translation keys.
+- Data-fetch duplication inside route pages when domain hooks already exist.
+- Registration form logic added under `register/`; route stays redirect-only.
+- Hydration gate removal from root redirect flow.
+- Segment error boundary removal from volatile route groups.
+- Hardcoded UI copy in page surfaces.
 
 ## DRIFT GUARDS
 
-- Recount `**/page.tsx` and segment folders when route surface changes.
-- Update route-contract list when dense feature subtrees gain or lose local `AGENTS.md` files.
-- Recheck boundary placement whenever a new volatile domain route is added.
-- Verify `layout.tsx` still wraps children with global error boundary + providers.
-- Verify root/login/register redirects remain consistent after auth flow changes.
-- Keep this file route-layer only; provider/store/lib rules belong in sibling modules.
+- Recount subtree files before editing inventory bullets.
+- Recount `**/page.tsx` when route surfaces move.
+- Update child-doc list when route groups gain or lose local `AGENTS.md` files.
+- Recheck error-boundary placement when new volatile groups land.
+- Keep this file route-layer only; subtree internals stay in child docs.

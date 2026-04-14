@@ -3,40 +3,40 @@
 ## PURPOSE
 
 - Runtime-free shared contracts package for apps and API.
-- Canonical home for enums, DTO barrels, and typed i18n catalog exports.
+- Canonical home for enums, DTO barrels, transport types, i18n exports.
 
 ## INVENTORY
 
-- `src/index.ts` — root export surface (`enums`, `api`, `dto`, `i18n`).
-- `src/enums.ts` — 24 shared enums consumed across apps/API.
-- `src/api.ts` — transport envelopes (`ApiResponse`, `PaginatedResponse`, `ErrorResponse`).
-- `src/dto/` — 13 files total: `AGENTS.md`, 11 domain DTO modules, `index.ts`.
+- `src/index.ts` — root export surface: `enums`, `api`, `dto`, `i18n`.
+- `src/enums.ts` — shared enum set.
+- `src/api.ts` — transport envelopes: `ApiResponse`, `PaginatedResponse`, `ErrorResponse`.
+- `src/dto/` — 17 files total: `AGENTS.md`, 15 domain DTO modules, `index.ts`.
 - `src/i18n/` — 3 files total: `AGENTS.md`, `ko.ts`, `index.ts`.
-- `src/__tests__/` — 5 contract tests (`enums`, `dto`, `dto-shapes`, `exports`, `i18n`).
-- `src/` footprint — 22 TypeScript files in this package.
+- `src/__tests__/` — 5 contract tests: `enums`, `dto`, `dto-shapes`, `exports`, `i18n`.
+- `src/` footprint — 26 TypeScript files in package.
 - `package.json` — package metadata, scripts, workspace wiring.
-- `tsconfig.json` — package TS compiler contract.
-- `vitest.config.ts` — unit test runtime config.
+- `tsconfig.json` — TS compiler contract.
+- `vitest.config.ts` — unit-test runtime config.
 
 ## CONVENTIONS
 
-- Keep package side-effect free; types/interfaces/enums only.
-- Route consumer imports through package root; avoid deep-path imports.
-- DTO add/remove requires same-change update in `src/dto/index.ts`.
-- Locale add/remove requires same-change update in `src/i18n/index.ts` and `src/index.ts`.
-- Enum literal changes treated as API contract changes; coordinate callers.
-- Preserve DTO nullability/optional semantics exactly.
+- Package stays side-effect free; contracts only.
+- Consumer imports stay on package root; avoid deep-path imports.
+- DTO add/remove stays synchronized with `src/dto/index.ts`.
+- Locale add/remove stays synchronized with `src/i18n/index.ts` and `src/index.ts`.
+- Enum literal changes are API-contract changes.
+- Optional vs nullable semantics stay exact.
 
 ## ANTI-PATTERNS
 
-- Runtime helpers, fetchers, validators, or app state in this package.
-- Duplicate enum unions when canonical enum already exists.
+- Runtime helpers, fetchers, validators, app state.
+- Duplicate enum unions when canonical enums already exist.
 - Hidden exports bypassing `src/index.ts`.
-- `any` or `unknown` widening in DTO contracts.
+- `any` or widened `unknown` in contract types.
 
 ## DRIFT GUARDS
 
-- Verify enum count and names against `src/enums.ts` before doc edits.
-- Verify `src/dto/` and `src/i18n/` file counts from actual directory.
+- Verify DTO and i18n counts from actual directories before doc edits.
 - Verify root barrel still exports all four contract domains.
-- Verify tests still map to contract domains after file moves.
+- Verify `src/` TypeScript file count when DTO modules split again.
+- Verify tests still map to contract domains after moves.

@@ -1,59 +1,36 @@
 # Votes
 
-## PURPOSE
+## OVERVIEW
 
-- Define month-period voting workflows in the admin route tree.
+- Vote admin tree: dashboard shell, creation routes, candidate list, `[id]` detail flow.
 
-## INVENTORY
+## FILES
 
-- Root files (`4` files, `3` TS/TSX):
-  - `page.tsx`
-  - `error.tsx`
-  - `votes-helpers.ts`
-  - `AGENTS.md`
-- Subdirs (`5`):
-  - `__tests__/`
-  - `[id]/`
-  - `candidates/`
-  - `components/`
-  - `new/`
-- Main route files:
-  - `page.tsx`, `error.tsx`, `votes-helpers.ts`
-  - `new/page.tsx`
-  - `candidates/page.tsx`
-  - `[id]/page.tsx`, `[id]/vote-detail.tsx`
-  - `[id]/candidates/new/page.tsx`, `[id]/candidates/new/add-candidate.tsx`
-- Shared vote cards:
-  - `vote-period-card.tsx`
-  - `candidates-card.tsx`
-  - `results-card.tsx`
-- Tests in subtree:
-  - `__tests__/page.test.tsx`
-  - `new/__tests__/`
-  - `candidates/__tests__/`
-  - `[id]/__tests__/`
-  - `[id]/candidates/new/__tests__/`
+- Root files (`4`): `page.tsx`, `error.tsx`, `votes-helpers.ts`, `AGENTS.md`
+- Root test dir (`3`): `__tests__/page.test.tsx`, `__tests__/error.test.tsx`, `__tests__/votes-helpers.test.ts`
+- Root subdirs (`4` runtime + test dir): `new/`, `candidates/`, `components/`, `[id]/`, `__tests__/`
+- Shared cards (`3`): `components/vote-period-card.tsx`, `components/candidates-card.tsx`, `components/results-card.tsx`
+- Shared card tests (`3`):
+  - `components/__tests__/vote-period-card.test.tsx`
+  - `components/__tests__/candidates-card.test.tsx`
+  - `components/__tests__/results-card.test.tsx`
+- Simple routes:
+  - `new/page.tsx`, `new/__tests__/page.test.tsx`
+  - `candidates/page.tsx`, `candidates/__tests__/page.test.tsx`
+- `[id]/` detail files (`2`): `page.tsx`, `vote-detail.tsx`
+- `[id]/` detail tests (`2`): `__tests__/page.test.tsx`, `__tests__/vote-detail.test.tsx`
+- Nested candidate-create under `[id]/candidates/new/`:
+  - `page.tsx`, `add-candidate.tsx`
+  - `__tests__/page.test.tsx`, `__tests__/add-candidate.test.tsx`
+
+## WHERE TO LOOK
+
+- Display helpers: `votes-helpers.ts`
+- Dashboard shell: `page.tsx`
+- Detail shell: `[id]/vote-detail.tsx`
 
 ## CONVENTIONS
 
-- Vote month (`YYYY-MM`) is the primary workflow key.
-- `votes/page.tsx` is the dashboard shell and composes period/candidate/result cards.
-- New flow (`new/page.tsx`) creates a period and transitions into month detail.
-- Dynamic routes (`[id]`, nested candidate-new) keep wrapper/client split for static export.
-- Candidate CRUD and period controls use explicit confirmation UX for destructive actions.
-- API orchestration and invalidation rules stay in `use-votes.ts`.
-- Keep `votes-helpers.ts` for display helpers only.
-
-## ANTI-PATTERNS
-
-- Reintroducing split historical routes like `periods/page.tsx` or `results/page.tsx`.
-- Expanding wrapper routes with business logic beyond param handoff.
-- Moving CSV download/export behavior out of the vote hook without documenting parity.
-- Duplicating candidate form validation logic across `new/` and `[id]/candidates/new/`.
-
-## DRIFT GUARDS
-
-- On adding/removing vote routes, update subtree route inventory bullets.
-- Keep root count accurate (`4` files, `5` subdirs).
-- On helper changes, verify `votes-helpers.ts` still display-only.
-- Keep test subtree references updated when adding new nested flows.
+- Month key stays central in root route + helpers.
+- `[id]/page.tsx`: wrapper only; detail UI stays in `vote-detail.tsx`.
+- Candidate-create flow stays nested under `[id]/candidates/new/`.

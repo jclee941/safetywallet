@@ -1,34 +1,38 @@
 # Points
 
-## PURPOSE
+## OVERVIEW
 
-- Admin points route contract for manual awards, policy management, and month-end settlement flows.
-- Keeps ledger, policy, and settlement responsibilities separated by subroute.
+- Points admin tree: root ledger/manual award, policy CRUD subtree, settlement subtree.
 
-## INVENTORY
+## FILES
 
-- Root files (3): `page.tsx`, `error.tsx`, `AGENTS.md`.
-- Subdirs (2): `policies/`, `settlement/`.
-- `policies/` files (5 + nested test dir): `page.tsx`, `policy-helpers.ts`, 3 component files, `components/__tests__/`.
-- `settlement/` files (2 + nested test dir): `page.tsx`, `__tests__/page.test.tsx`.
+- Root files (`3`): `page.tsx`, `error.tsx`, `AGENTS.md`
+- Root test dir: `__tests__/page.test.tsx`
+- Root subdirs (`2`): `policies/`, `settlement/`
+- `policies/` runtime files (`5`):
+  - `page.tsx`
+  - `policy-helpers.ts`
+  - `components/policies-data-table.tsx`
+  - `components/policy-form-dialog.tsx`
+  - `components/delete-policy-dialog.tsx`
+- `policies/` tests (`5`):
+  - `__tests__/page.test.tsx`
+  - `__tests__/policy-helpers.test.ts`
+  - `components/__tests__/policies-data-table.test.tsx`
+  - `components/__tests__/policy-form-dialog.test.tsx`
+  - `components/__tests__/delete-policy-dialog.test.tsx`
+- `settlement/` files (`2`):
+  - `page.tsx`
+  - `__tests__/page.test.tsx`
+
+## WHERE TO LOOK
+
+- Root award/ledger shell: `page.tsx`
+- Policy labels/mappers: `policies/policy-helpers.ts`
+- Settlement flow: `settlement/page.tsx`
 
 ## CONVENTIONS
 
-- Keep `page.tsx` focused on manual award flow and ledger visibility.
-- Keep policy CRUD inside `policies/`, with display helpers staying in `policy-helpers.ts`.
-- Keep settlement snapshot/finalize UX inside `settlement/` only.
-- Keep mutations and invalidation behavior in hooks, not route-local tables/dialogs.
-
-## ANTI-PATTERNS
-
-- Mixing settlement-only logic back into the root ledger page.
-- Duplicating policy label or dialog logic outside `policies/`.
-- Hiding destructive settlement or policy actions behind undocumented helper indirection.
-- Putting API transport state inside `DataTable` or dialog presentational components.
-
-## DRIFT GUARDS
-
-- Recount `policies/` and `settlement/` subtree files before updating inventory counts.
-- Keep policy helper ownership explicit when adding new mapping/label files.
-- Keep settlement tests aligned with snapshot/finalize behavior.
-- Update parent `src/app/AGENTS.md` child-doc list if this file moves or is removed.
+- Root route: manual awards + ledger view only.
+- Policy display helpers stay in `policies/policy-helpers.ts`.
+- Settlement logic stays inside `settlement/`; no spillback into root route.

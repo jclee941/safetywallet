@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
 **Stack:** TypeScript · Hono · Drizzle · Next.js 15 · Cloudflare Workers · D1
-**Generated:** 2026-04-04 via init-deep
-**Status:** Active - 47 AGENTS.md files across codebase
+**Generated:** 2026-04-15 via init-deep
+**Status:** Active - 60 AGENTS.md files across codebase
 
 ## OVERVIEW
 

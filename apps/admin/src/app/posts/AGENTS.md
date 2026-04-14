@@ -1,53 +1,41 @@
 # Posts
 
-## PURPOSE
+## OVERVIEW
 
-- Define admin post-review route ownership for list and detail flows.
+- Post review tree: list route plus thin `[id]` wrapper around detail client.
 
-## INVENTORY
+## FILES
 
-- Root files (`4` files, `3` TS/TSX):
-  - `page.tsx`
-  - `page.test.tsx`
-  - `error.tsx`
-  - `AGENTS.md`
-- Subdirs (`1`):
-  - `[id]/`
-- Detail route files:
-  - `[id]/page.tsx`
-  - `[id]/post-detail.tsx`
-  - `[id]/post-detail-helpers.ts`
-- Detail component files:
-  - `[id]/components/ai-analysis-card.tsx`
-  - `[id]/components/assignment-form.tsx`
-  - `[id]/components/metadata-card.tsx`
-  - `[id]/components/post-classification-card.tsx`
-  - `[id]/components/post-content-card.tsx`
-  - `[id]/components/review-history-card.tsx`
-- Detail tests:
-  - `[id]/__tests__/page.test.tsx`
-- Main route files:
-  - `page.tsx`, `page.test.tsx`, `error.tsx`
+- Root files (`4`): `page.tsx`, `page.test.tsx`, `error.tsx`, `AGENTS.md`
+- Root test dir: `__tests__/page.test.tsx`
+- Detail route dir: `[id]/`
+- `[id]/` core files (`3`): `page.tsx`, `post-detail.tsx`, `post-detail-helpers.ts`
+- `[id]/components/` files (`6`):
+  - `ai-analysis-card.tsx`
+  - `assignment-form.tsx`
+  - `metadata-card.tsx`
+  - `post-classification-card.tsx`
+  - `post-content-card.tsx`
+  - `review-history-card.tsx`
+- `[id]/` tests (`9`):
+  - `__tests__/page.test.tsx`
+  - `__tests__/post-detail.test.tsx`
+  - `__tests__/post-detail-helpers.test.ts`
+  - `components/__tests__/ai-analysis-card.test.tsx`
+  - `components/__tests__/assignment-form.test.tsx`
+  - `components/__tests__/metadata-card.test.tsx`
+  - `components/__tests__/post-classification-card.test.tsx`
+  - `components/__tests__/post-content-card.test.tsx`
+  - `components/__tests__/review-history-card.test.tsx`
+
+## WHERE TO LOOK
+
+- Wrapper boundary: `[id]/page.tsx`
+- Detail shell: `[id]/post-detail.tsx`
+- Display/status helpers: `[id]/post-detail-helpers.ts`
 
 ## CONVENTIONS
 
-- List route manages filters/search/sort and navigates row click to `/posts/{id}`.
-- `[id]/page.tsx` stays a thin wrapper for static export; detail logic lives in `post-detail.tsx`.
-- Detail page composes focused cards (content, metadata, AI/classification, history, assignment).
-- Display labels/status/date mappings stay in `post-detail-helpers.ts`.
-- Mutation and invalidation behavior remains in hook modules, not detail cards.
-- Keep detail component props serializable and route-local.
-
-## ANTI-PATTERNS
-
-- Re-introducing obsolete helper names (`post-helpers.ts`) or duplicate mapping files.
-- Adding data-fetching side effects inside presentational card components.
-- Expanding wrapper route logic beyond params handoff and static placeholder generation.
-- Spreading post-detail helpers into shared global utility folders.
-
-## DRIFT GUARDS
-
-- On adding new detail cards, update `[id]/components/` inventory list.
-- On route file changes, keep root and `[id]` inventories in sync.
-- Keep root count accurate (`4` files, `1` subdir).
-- Ensure wrapper route remains thin after refactors.
+- `[id]/page.tsx`: params handoff only.
+- Detail cards stay route-local under `[id]/components/`.
+- Labels/date/status transforms stay in `post-detail-helpers.ts`.

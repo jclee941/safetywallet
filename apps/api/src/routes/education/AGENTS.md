@@ -1,33 +1,35 @@
 # AGENTS: ROUTES EDUCATION
 
-## PURPOSE
+## OVERVIEW
 
-- Education API route contract for content, quiz, completion, statutory, and TBM endpoints.
-- Keeps the education surface split by resource family under one mounted feature router.
+Education route surface; top-level content/attempt/statutory handlers plus nested `quizzes/` and `tbm/` routers.
 
-## INVENTORY
+## FILES
 
-- Route files (8): `completions.ts`, `contents.ts`, `helpers.ts`, `index.ts`, `quiz-attempts.ts`, `quizzes.ts`, `statutory.ts`, `tbm.ts`.
-- Test subtree: `__tests__/completions.test.ts`.
-- Local doc: `AGENTS.md`.
+- Top-level files (9): `completions.ts`, `contents-ai.ts`, `contents-routes.ts`, `helpers.ts`, `index.ts`, `quiz-answer-utils.ts`, `quiz-attempts.ts`, `quiz-question-validators.ts`, `statutory.ts`.
+- Feature subdirs (3): `__tests__/`, `quizzes/`, `tbm/`.
+- `quizzes/` files (7): `crud-read.ts`, `crud-write.ts`, `crud.ts`, `index.ts`, `questions-crud.ts`, `questions-reorder.ts`, `questions.ts`.
+- `tbm/` files (7): `ai-analysis.ts`, `ai-jobs.ts`, `attendance.ts`, `crud-detail.ts`, `crud.ts`, `index.ts`, `shared.ts`.
+- Tests dir: `__tests__/`.
+
+## WHERE TO LOOK
+
+- `index.ts` - mount order for contents, attempts, quizzes, statutory, TBM.
+- `contents-routes.ts` and `contents-ai.ts` - content CRUD vs AI helpers.
+- `quiz-answer-utils.ts` and `quiz-question-validators.ts` - shared quiz answer/validation helpers.
+- `quizzes/` - quiz definition and question management routes.
+- `tbm/` - TBM CRUD, attendance, and AI analysis split.
 
 ## CONVENTIONS
 
-- Keep `index.ts` mount-only and delegate resource behavior to sibling modules.
-- Keep shared parsing/mapping helpers in `helpers.ts`, not copied across route files.
-- Keep quiz attempt flows separate from quiz definition routes.
-- Keep TBM and statutory endpoints isolated from content/quiz contracts.
+- Keep top-level content helpers separate from nested quiz/TBM routers.
+- Keep quiz-attempt runtime separate from quiz-definition CRUD.
+- Keep TBM AI jobs and analysis split from TBM CRUD handlers.
+- Keep validation helpers in named utility files, not hidden inside route modules.
 
 ## ANTI-PATTERNS
 
-- Folding all education endpoints into a mega route file.
-- Duplicating helper transforms across `contents`, `quizzes`, and `tbm` handlers.
-- Mixing quiz-attempt write paths into definition/list handlers.
-- Treating statutory or TBM routes as generic content aliases.
-
-## DRIFT GUARDS
-
-- Check `src/routes/education` file list before updating inventory bullets.
-- Check `index.ts` mount order against existing sibling files.
-- Check added education route modules for matching tests when behavior expands.
-- Check parent `src/routes/AGENTS.md` child-doc list stays aligned.
+- Listing `contents.ts`, `quizzes.ts`, or `tbm.ts` as if they still exist.
+- Merging `contents-routes.ts` and `contents-ai.ts` into one branch-heavy file.
+- Copying quiz answer validation into `quizzes/` handlers.
+- Treating `quizzes/` or `tbm/` as undocumented leaf routers.

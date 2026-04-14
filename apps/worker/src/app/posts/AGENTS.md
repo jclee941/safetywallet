@@ -2,34 +2,34 @@
 
 ## PURPOSE
 
-- Worker posts route contract for report list, new report, and detail view flows.
-- Keeps list, creation, and detail responsibilities split across dedicated routes.
+- Route contract for worker hazard-report list/create/detail flow.
+- Keep list, create, and detail surfaces split by subtree.
 
 ## INVENTORY
 
-- Root files (2): `page.tsx`, `error.tsx`.
-- Root tests: `__tests__/page.test.tsx`.
-- New route subtree `new/` (2 files): `page.tsx`, `__tests__/page.test.tsx`.
-- View route subtree `view/` (2 files): `page.tsx`, `__tests__/page.test.tsx`.
-- Local doc: `AGENTS.md`.
+- Root files (3): `AGENTS.md`, `page.tsx`, `error.tsx`.
+- Root tests (1): `__tests__/page.test.tsx`.
+- `new/` — 10 files: `page.tsx`, `new-post-client.tsx`, `constants.ts`, 5 `components/*`, `hooks/use-post-draft.ts`, `__tests__/page.test.tsx`.
+- `view/` — 2 files: `page.tsx`, `__tests__/page.test.tsx`.
+- Tree total: 16 files.
 
 ## CONVENTIONS
 
-- Keep `page.tsx` as the list shell for filters, infinite scroll, and CTA into `new/`.
-- Keep create flow in `new/` and detail flow in `view/`; do not collapse them back into the list page.
-- Keep detail routing on query params (`/posts/view?id=...`) until route design changes at the parent layer.
-- Keep transport and cache behavior in hooks/lib, not route-local wrappers.
+- `page.tsx` stays list shell: filters, infinite scroll, CTA into `new/`.
+- `new/` owns compose flow internals; helper components/hooks stay inside that subtree.
+- `view/` stays thin detail entry; route remains `/posts/view?id=...`.
+- Transport/cache behavior stays in hooks/lib, not route-local fetch wrappers.
 
 ## ANTI-PATTERNS
 
-- Re-implementing list filtering or infinite-scroll logic inside `new/` or `view/`.
-- Introducing path-param detail routes without updating the parent route contract.
-- Moving post create/detail behavior into shared unrelated route utilities.
-- Hardcoding review-status copy instead of using translation keys and shared enums.
+- List filtering or infinite-scroll logic reimplemented inside `new/` or `view/`.
+- Path-param detail routes added without parent route-contract update.
+- Create/detail logic moved into unrelated shared route utilities.
+- Hardcoded review-status copy bypassing translation keys or shared enums.
 
 ## DRIFT GUARDS
 
-- Recount `new/` and `view/` subtree files before updating inventory bullets.
-- Keep list/new/view split explicit when route responsibilities change.
+- Recount `new/` and `view/` subtree files before inventory edits.
+- Keep list/new/view split explicit when responsibilities move.
 - Keep route tests aligned with each entry surface.
-- Update parent `src/app/AGENTS.md` child-doc list if this file moves or is removed.
+- Update parent `src/app/AGENTS.md` if this file moves or new local docs appear.

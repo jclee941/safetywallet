@@ -1,49 +1,39 @@
 # Education
 
-## PURPOSE
+## OVERVIEW
 
-- Own the single-route education admin hub (`education/page.tsx`).
+- Single-route education hub; tab folders own content, quiz, statutory, TBM modules.
 
-## INVENTORY
+## FILES
 
-- Root files (`3` files, `2` TS/TSX):
-  - `page.tsx`
-  - `education-helpers.ts`
-  - `AGENTS.md`
-- Subdirs (`2`):
-  - `__tests__/`
-  - `components/`
-- Root test:
-  - `__tests__/page.test.tsx`
-- Component root files:
+- Root files (`3`): `page.tsx`, `education-helpers.ts`, `AGENTS.md`
+- Root test dir: `__tests__/page.test.tsx`
+- Root component files:
   - `components/content-completions.tsx`
   - `components/education-types.ts`
-- Tab modules (`4`):
-  - `components/contents-tab/` (9 files)
-  - `components/quizzes-tab/` (9 files)
-  - `components/statutory-tab/` (3 files)
-  - `components/tbm-tab/` (5 files)
-- Tab tests: `components/__tests__/`.
+- Tab folders:
+  - `components/contents-tab/` (`9` files): `index.tsx`, `constants.ts`, `content-list.tsx`, `content-form.tsx`, `content-form-fields.tsx`, `content-form-kosha.tsx`, `content-form-source-modes.tsx`, `content-form-youtube.tsx`, `content-ai-analysis.tsx`
+  - `components/quizzes-tab/` (`9` files): `index.tsx`, `constants.ts`, `types.ts`, `utils.ts`, `quiz-list.tsx`, `quiz-registration.tsx`, `question-list.tsx`, `question-management.tsx`, `question-form.tsx`
+  - `components/statutory-tab/` (`3` files): `index.tsx`, `training-list.tsx`, `training-form.tsx`
+  - `components/tbm-tab/` (`5` files): `index.tsx`, `tbm-list.tsx`, `tbm-form.tsx`, `tbm-meeting-minutes.tsx`, `tbm-ai-analysis.tsx`
+- Component test files (`8`):
+  - `components/__tests__/contents-tab.test.tsx`
+  - `components/__tests__/contents-subcomponents.test.tsx`
+  - `components/__tests__/quizzes-tab.test.tsx`
+  - `components/__tests__/quizzes-subcomponents.test.tsx`
+  - `components/__tests__/statutory-tab.test.tsx`
+  - `components/__tests__/tbm-tab.test.tsx`
+  - `components/__tests__/tbm-subcomponents.test.tsx`
+  - `components/__tests__/education-helpers-completions.test.tsx`
+
+## WHERE TO LOOK
+
+- Tab metadata: `education-helpers.ts`
+- Shared tab types: `components/education-types.ts`
+- Completion view: `components/content-completions.tsx`
 
 ## CONVENTIONS
 
-- One page hosts all education workflows via tab switching.
-- `education-helpers.ts` owns tab ids/labels metadata for the shell.
-- Each tab folder is domain-scoped and keeps local constants/types/utils with UI.
-- Content completions render as a standalone component but stay inside education scope.
-- Data lifecycle and API effects stay in hook layer (`use-education-*` modules).
-- Keep cross-tab metadata in `education-helpers.ts` only.
-
-## ANTI-PATTERNS
-
-- Splitting tabs into nested routes without static-export strategy changes.
-- Cross-tab shared mutable state that bypasses tab-local boundaries.
-- Re-introducing obsolete route assumptions from older materials/quiz route trees.
-- Duplicating question/content form constants across tab folders.
-
-## DRIFT GUARDS
-
-- On new tab folder, add it to tab module list with file count.
-- On moving tab files, update per-tab file counts in this inventory.
-- Keep root count accurate (`3` files, `2` subdirs).
-- Keep `components/__tests__/` coverage map aligned with existing tabs.
+- Keep cross-tab labels/ids in `education-helpers.ts`.
+- Keep tab-local constants/types/utils inside owning tab folder.
+- No nested route splits; tab switching stays inside root `page.tsx`.
