@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { verifyPassword } from "../../lib/crypto";
-import { checkRateLimit } from "../../lib/rate-limit";
+import { checkRateLimit, type RateLimitResult } from "../../lib/rate-limit";
 import {
   checkDeviceRegistrationLimit,
+  type DeviceRegistrationEntry,
   recordDeviceRegistration,
 } from "../../lib/device-registrations";
 import {
   fasSearchEmployeeByPhone,
   fasCheckWorkerAttendance,
 } from "../../lib/fas";
+import type { FasEmployee } from "../../lib/fas/types";
 import { syncSingleFasEmployee, socialNoToDob } from "../../lib/fas-sync";
 import { logAuditWithContext } from "../../lib/audit";
 import { signJwt } from "../../lib/jwt";
@@ -57,6 +59,29 @@ const mockAll = vi.fn();
 const mockRun = vi.fn();
 const mockInsertValues = vi.fn();
 const mockLimit = vi.fn();
+
+function makeFasEmployee(overrides: Partial<FasEmployee> = {}): FasEmployee {
+  return {
+    emplCd: "",
+    name: "",
+    partCd: "",
+    companyName: "",
+    phone: "",
+    socialNo: "",
+    gojoCd: "",
+    jijoCd: "",
+    careCd: "",
+    roleCd: "",
+    stateFlag: "W",
+    entrDay: "",
+    retrDay: "",
+    rfid: "",
+    violCnt: 0,
+    updatedAt: new Date(),
+    isActive: true,
+    ...overrides,
+  };
+}
 
 function makeSelectChain() {
   const chain: Record<string, unknown> = {};
@@ -339,12 +364,11 @@ describe("auth", () => {
     });
 
     it("returns 429 when device registration limit is exceeded", async () => {
+      const recent: DeviceRegistrationEntry[] = [];
       vi.mocked(checkDeviceRegistrationLimit).mockResolvedValueOnce({
         allowed: false,
-        remaining: 0,
-        resetAt: 0,
-        recent: [],
-      } as any);
+        recent,
+      });
 
       const { app, env } = await createApp();
       const res = await app.request(
@@ -439,12 +463,12 @@ describe("auth", () => {
     });
 
     it("returns 429 when login IP rate limit is exceeded", async () => {
-      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+      const rateLimitResult: RateLimitResult = {
         allowed: false,
         remaining: 0,
         resetAt: 0,
-        recent: [],
-      } as any);
+      };
+      vi.mocked(checkRateLimit).mockResolvedValueOnce(rateLimitResult);
       const { app, env } = await createApp();
       const res = await app.request(
         "/login",
@@ -753,9 +777,9 @@ describe("auth", () => {
     });
 
     it("uses FAS lookup when hyperdrive is available", async () => {
-      vi.mocked(fasSearchEmployeeByPhone).mockResolvedValueOnce({
-        socialNo: "7104101",
-      } as any);
+      vi.mocked(fasSearchEmployeeByPhone).mockResolvedValueOnce(
+        makeFasEmployee({ socialNo: "7104101" }),
+      );
       vi.mocked(socialNoToDob).mockReturnValueOnce("19710410");
       vi.mocked(syncSingleFasEmployee).mockResolvedValueOnce({
         id: "user-1",
@@ -874,12 +898,12 @@ describe("auth", () => {
     });
 
     it("returns 429 when refresh endpoint is rate limited", async () => {
-      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+      const rateLimitResult: RateLimitResult = {
         allowed: false,
         remaining: 0,
         resetAt: 0,
-        recent: [],
-      } as any);
+      };
+      vi.mocked(checkRateLimit).mockResolvedValueOnce(rateLimitResult);
 
       const { app, env } = await createApp();
       const res = await app.request(
@@ -1271,12 +1295,12 @@ describe("auth", () => {
     });
 
     it("returns 429 when admin login IP is rate limited", async () => {
-      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+      const rateLimitResult: RateLimitResult = {
         allowed: false,
         remaining: 0,
         resetAt: 0,
-        recent: [],
-      } as any);
+      };
+      vi.mocked(checkRateLimit).mockResolvedValueOnce(rateLimitResult);
       const { app, env } = await createApp();
       const res = await app.request(
         "/admin/login",

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import type { PushResult } from "../../lib/web-push/subscription";
 
 type AppEnv = {
   Bindings: Record<string, unknown>;
@@ -97,6 +98,12 @@ vi.mock("../../lib/sms", () => ({
 }));
 
 const mockEnqueueNotification = vi.fn().mockResolvedValue(undefined);
+
+const successPushResult: PushResult = {
+  success: true,
+  statusCode: 201,
+  endpoint: "https://push.example.com/success",
+};
 
 vi.mock("../../lib/notification-queue", () => ({
   enqueueNotification: (...args: unknown[]) => mockEnqueueNotification(...args),
@@ -680,12 +687,12 @@ describe("routes/notifications", () => {
         ]);
 
       vi.mocked(sendPushBulk).mockResolvedValueOnce([
-        { success: true },
+        successPushResult,
         {
           success: false,
           endpoint: "https://fcm.googleapis.com/fcm/send/test",
           statusCode: 410,
-        } as any,
+        },
       ] as never);
       vi.mocked(shouldRemoveSubscription).mockImplementation(
         (result: { success: boolean; statusCode?: number }) =>
@@ -749,7 +756,7 @@ describe("routes/notifications", () => {
           success: false,
           endpoint: "https://fcm.googleapis.com/fcm/send/test",
           statusCode: 500,
-        } as any,
+        },
       ] as never);
       vi.mocked(shouldRemoveSubscription).mockReturnValue(false);
 

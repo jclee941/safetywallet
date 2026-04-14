@@ -6,6 +6,19 @@ type AppEnv = {
   Variables: { auth: AuthContext };
 };
 
+type MonitoringTestEnv = {
+  DB: Record<string, never>;
+  KV: {
+    get: ReturnType<typeof vi.fn>;
+    put: ReturnType<typeof vi.fn>;
+  };
+  R2: {
+    list: ReturnType<typeof vi.fn>;
+  };
+  VERSION: string;
+  JWT_SECRET: string;
+};
+
 vi.mock("../../../middleware/auth", () => ({
   authMiddleware: vi.fn(async (_c: unknown, next: () => Promise<void>) =>
     next(),
@@ -117,7 +130,7 @@ async function createApp(auth?: AuthContext) {
     await next();
   });
   app.route("/", monitoringRoute);
-  const env = {
+  const env: MonitoringTestEnv = {
     DB: {},
     KV: {
       get: vi.fn(),
@@ -128,7 +141,7 @@ async function createApp(auth?: AuthContext) {
     },
     VERSION: "test",
     JWT_SECRET: "test-secret",
-  } as Record<string, unknown>;
+  };
   return { app, env };
 }
 
@@ -278,7 +291,7 @@ describe("admin/monitoring", () => {
     it("returns 503 when KV check fails", async () => {
       const { app, env } = await createApp(makeAuth());
       // Mock KV failure
-      (env.KV as any).get = vi.fn().mockRejectedValue(new Error("KV error"));
+      env.KV.get = vi.fn().mockRejectedValue(new Error("KV error"));
       const res = await app.request("/monitoring/health", {}, env);
       expect(res.status).toBe(503);
       const body = (await res.json()) as {
@@ -293,7 +306,7 @@ describe("admin/monitoring", () => {
     it("returns 503 when R2 check fails", async () => {
       const { app, env } = await createApp(makeAuth());
       // Mock R2 failure
-      (env.R2 as any).list = vi.fn().mockRejectedValue(new Error("R2 error"));
+      env.R2.list = vi.fn().mockRejectedValue(new Error("R2 error"));
       const res = await app.request("/monitoring/health", {}, env);
       expect(res.status).toBe(503);
       const body = (await res.json()) as {

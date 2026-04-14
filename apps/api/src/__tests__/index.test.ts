@@ -7,6 +7,25 @@ import {
   deactivateRetiredEmployees,
 } from "../lib/fas-sync";
 
+interface HealthResponse {
+  success: boolean;
+  data: { status: string };
+  timestamp: string;
+}
+
+interface SystemStatusResponse {
+  success: boolean;
+  data: {
+    notices: Array<{ type: string; message: string; severity: string }>;
+    hasIssues: boolean;
+  };
+}
+
+interface ErrorJsonResponse {
+  success: boolean;
+  error: { code: string; message: string };
+}
+
 class MockHtmlElement {
   attributes = new Map<string, string>();
 
@@ -154,7 +173,7 @@ describe("API Index", () => {
   describe("Health Endpoint", () => {
     it("should return healthy status", async () => {
       const res = await app.request("http://localhost/api/health", {}, mockEnv);
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as HealthResponse;
 
       expect(res.status).toBe(200);
       expect(json.success).toBe(true);
@@ -170,7 +189,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as SystemStatusResponse;
 
       expect(res.status).toBe(200);
       expect(json.success).toBe(true);
@@ -189,7 +208,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as SystemStatusResponse;
 
       expect(res.status).toBe(200);
       expect(json.data.hasIssues).toBe(true);
@@ -211,7 +230,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as SystemStatusResponse;
 
       expect(res.status).toBe(200);
       expect(json.data.notices[0]).toEqual({
@@ -232,7 +251,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as SystemStatusResponse;
 
       expect(res.status).toBe(200);
       expect(json.data.notices[0]).toEqual({
@@ -250,7 +269,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as SystemStatusResponse;
 
       expect(res.status).toBe(200);
       expect(json.data.notices).toEqual([]);
@@ -264,7 +283,7 @@ describe("API Index", () => {
         {},
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as ErrorJsonResponse;
 
       expect(res.status).toBe(404);
       expect(json.success).toBe(false);
@@ -793,7 +812,7 @@ describe("API Index", () => {
         },
         mockEnv,
       );
-      const json = (await res.json()) as any;
+      const json = (await res.json()) as ErrorJsonResponse;
 
       expect(res.status).toBe(404); // Hono returns 404 for method not found by default
       expect(json.success).toBe(false);

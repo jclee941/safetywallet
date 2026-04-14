@@ -7,6 +7,7 @@ import {
   fasSearchEmployeeByName,
   fasSearchEmployeeByPhone,
 } from "../../../lib/fas";
+import type { FasEmployee } from "../../../lib/fas/types";
 import {
   syncFasEmployeesToD1,
   deactivateRetiredEmployees,
@@ -46,6 +47,29 @@ const mockGet = vi.fn();
 const mockAll = vi.fn();
 const mockRun = vi.fn();
 const mockInsertValues = vi.fn();
+
+function makeFasEmployee(overrides: Partial<FasEmployee> = {}): FasEmployee {
+  return {
+    emplCd: "",
+    name: "",
+    partCd: "",
+    companyName: "",
+    phone: "",
+    socialNo: "",
+    gojoCd: "",
+    jijoCd: "",
+    careCd: "",
+    roleCd: "",
+    stateFlag: "W",
+    entrDay: "",
+    retrDay: "",
+    rfid: "",
+    violCnt: 0,
+    updatedAt: new Date(),
+    isActive: true,
+    ...overrides,
+  };
+}
 
 function makeSelectChain() {
   const chain: Record<string, unknown> = {};
@@ -503,9 +527,9 @@ describe("admin/fas", () => {
     });
 
     it("searches by phone when hyperdrive is configured", async () => {
-      vi.mocked(fasSearchEmployeeByPhone).mockResolvedValueOnce({
-        emplCd: "E-1",
-      } as any);
+      vi.mocked(fasSearchEmployeeByPhone).mockResolvedValueOnce(
+        makeFasEmployee({ emplCd: "E-1" }),
+      );
       const { app, env } = await createApp(makeAuth());
       env.FAS_HYPERDRIVE = {};
 
@@ -520,7 +544,7 @@ describe("admin/fas", () => {
 
     it("searches by name and returns multiple rows", async () => {
       vi.mocked(fasSearchEmployeeByName).mockResolvedValueOnce([
-        { emplCd: "E-1" } as any,
+        makeFasEmployee({ emplCd: "E-1" }),
       ]);
       const { app, env } = await createApp(makeAuth());
       env.FAS_HYPERDRIVE = {};
@@ -797,9 +821,9 @@ describe("admin/fas", () => {
     it("syncs hyperdrive employees and deactivates retired workers", async () => {
       vi.mocked(fasGetAllEmployeesPaginated).mockResolvedValueOnce({
         employees: [
-          { emplCd: "E-1", stateFlag: "W" },
-          { emplCd: "E-2", stateFlag: "R" },
-        ] as any,
+          makeFasEmployee({ emplCd: "E-1", stateFlag: "W" }),
+          makeFasEmployee({ emplCd: "E-2", stateFlag: "R", isActive: false }),
+        ],
         total: 2,
       });
       vi.mocked(syncFasEmployeesToD1).mockResolvedValueOnce({
