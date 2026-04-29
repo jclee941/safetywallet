@@ -269,3 +269,5 @@ op run --env-file=.env.e2e -- npx playwright test
 ## 라이선스
 
 Private. All rights reserved.
+
+<!-- pr-bot smoke test 2026-04-29T04:37:01Z -->
