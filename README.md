@@ -269,3 +269,5 @@ op run --env-file=.env.e2e -- npx playwright test
 ## 라이선스
 
 Private. All rights reserved.
+
+<!-- LLM final probe 1777812018 -->
