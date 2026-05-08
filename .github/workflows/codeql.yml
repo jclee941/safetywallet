@@ -11,7 +11,6 @@ on:
       - '**.py'
       - 'pyproject.toml'
       - 'requirements*.txt'
-      - '.github/workflows/codeql.yml'
   push:
     branches: [master, main]
     paths:
@@ -33,23 +32,23 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (Python)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository_visibility == 'private' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: python
           queries: security-extended,security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:python'
