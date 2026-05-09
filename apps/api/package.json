@@ -27,7 +27,7 @@
     "piexifjs": "^1.0.6",
     "sql.js": "^1.14.1",
     "yaml": "^2.8.4",
-    "zod": "3.25.76"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260509.1",
