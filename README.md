@@ -1,17 +1,92 @@
+<think>
+The user wants me to generate a comprehensive README.md for the SafetyWallet repository. Let me analyze the provided information:
+
+1. **Project**: SafetyWallet - Construction site safety management platform
+2. **Tech Stack**: TypeScript, Hono, Drizzle, Next.js 15, Cloudflare Workers, D1
+3. **Structure**: Monorepo with turbo.json, workspaces for apps and packages
+4. **Packages**: 
+   - `packages/ui` - Shared shadcn/ui components + Tailwind v4 theme tokens
+   - `packages/types` - Shared TS types, enums, DTOs, i18n translation data
+5. **Apps**:
+   - `apps/api` - Cloudflare Worker API (Hono + Drizzle + D1)
+   - `apps/admin` - Next.js 15 admin dashboard (port 3001, static export)
+   - `apps/worker` - Next.js 15 worker PWA (port 3000, static export)
+6. **Workflow Files**: 33 total workflow files listed
+7. **Automation**: Various GitHub Actions workflows for CI/CD, PR management, etc.
+
+I need to create a bilingual (Korean and English) comprehensive README.md with:
+- Title, badges
+- Overview
+- Features
+- Architecture
+- Automation inventory (workflows + tools)
+- Quick start
+- Local development
+- Commands reference
+- Contribution guide
+
+Let me structure this properly and include all the workflow names and tool names I can identify from the file list:
+
+Workflow files:
+01_branch-to-pr.yml
+02_issue-to-branch.yml
+03_pr-checks.yml
+04_actionlint.yml
+05_gitleaks.yml
+06_codeql.yml
+07_dependency-review.yml
+08_scorecard.yml
+09_semantic-pr.yml
+
+
+10_pr-review.yml
+12_dependabot-auto-merge.yml
+13_pr-auto-merge.yml
+14_bot-auto-fix.yml
+15_merged-pr-cleanup.yml
+18_issue-management.yml
+19_issue-backfill.yml
+20_readme-gen.yml
+21_docs-sync.yml
+24_release-notes.yml
+25_release-publish.yml
+29_downstream-health-check.yml
+37_ci-failure-issues.yml
+42_reusable-docs-sync.yml
+43_reusable-issue-management.yml
+44_reusable-pr-checks.yml
+45_reusable-gitleaks.yml
+60_ci-auto-heal.yml
+auto-merge.yml
+ci.yml
+labeler.yml
+standard-ci.yml
+welcome.yml
+security
+
+/11_pr-review.yml
+
+The automation stack includes various GitHub Actions workflows, Go-based tooling scripts (verify.go, git-preflight.go, check-anti-patterns.go), JavaScript utilities (lint-naming.js, check-wrangler-sync.js), and development tools like Turbo, Playwright, and Husky for pre-commit hooks. The scripts directory contains these custom tools for validation and automation tasks.
+
+</think>
+
+# SafetyWallet README
+
+```markdown
 <div align="center">
 
 # SafetyWallet
 
-**건설 현장 안전관리 플랫폼**
+**Construction Site Safety Management Platform**
 
-현장 근로자의 위험 보고, 출퇴근 관리, 안전 포인트 적립을 하나의 PWA에서 처리합니다.
-관리자는 리뷰, 정산, 교육, 모니터링을 대시보드에서 함께 봅니다.
+Field workers report hazards, log attendance, and earn safety points from a single PWA.
+Administrators review, settle, educate, and monitor from a unified dashboard.
 
 <p align="center">
-  <a href="./ARCHITECTURE.md">아키텍처</a>&nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="./CODE_STYLE.md">코딩 컨벤션</a>&nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="./.env.example">환경 변수</a>&nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="./docs/">문서</a>
+  <a href="./ARCHITECTURE.md">Architecture</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./CODE_STYLE.md">Coding Conventions</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./.env.example">Environment Variables</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="./docs/">Documentation</a>
 </p>
 
 <p align="center">
@@ -26,246 +101,442 @@
 
 ---
 
-## 핵심 기능
+## Table of Contents
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [Automation Inventory](#automation-inventory)
+- [Quick Start](#quick-start)
+- [Local Development](#local-development)
+- [Commands Reference](#commands-reference)
+- [Contributing](#contributing)
 
-| 근로자 (PWA)                        | 관리자 (Dashboard)                                        |
-| ----------------------------------- | --------------------------------------------------------- |
-| 위험 요소 보고, 사진 및 동영상 첨부 | 위험 보고 리뷰, 승인, 반려                                |
-| 출퇴근 기록, FAS 연동 동기화        | 출퇴근 통계, 동기화 상태 추적                             |
-| 안전 포인트 적립, 조회              | 포인트 정산, 정책 관리                                    |
-| 안전 교육 수강, 퀴즈 응답           | 교육 콘텐츠, 법정교육 관리                                |
-| TBM 참석, 이수 확인                 | TBM 관리, 공지 작성                                       |
-| 추천 투표 참여                      | 투표 기간 설정, 결과 집계                                 |
-| 공지사항 확인                       | AI 초안 기반 공지 작성                                    |
-| 웹 푸시 알림 수신                   | AI 인사이트, 시스템 모니터링, 감사 로그, 동기화 오류 추적 |
-| 오프라인 큐 자동 동기화             | 보상 관리, 수동 승인 처리                                 |
+---
 
-## 기술 스택
+## Overview | 개요
 
-- **Frontend** — Next.js 15.5.10 (Static Export) · React 18.3.1 · Tailwind v4 · Zustand · TanStack Query
-- **Backend** — Hono · Drizzle ORM · Cloudflare Workers · D1 (SQLite)
-- **Infra** — Cloudflare R2 · KV · Queues · Durable Objects · Workers AI · Hyperdrive
-- **Testing** — Vitest · Testing Library · Playwright · 3,521 unit tests · 341 test files · 4 E2E smoke tests
-- **CI/CD** — GitHub Actions (13 jobs) · Semantic Versioning · Slack 알림
-- **i18n** — ko (기본) · en · vi · zh
+SafetyWallet is a **monorepo** built with **Turborepo**, containing:
 
-## 프로젝트 구조
+| Package/App | Description | Port |
+|-------------|-------------|------|
+| `packages/types` | Shared TypeScript types, enums, DTOs, i18n translation data | — |
+| `packages/ui` | Shared shadcn/ui components + Tailwind v4 theme tokens | — |
+| `apps/api` | Cloudflare Worker API (Hono + Drizzle + D1) | — |
+| `apps/worker` | Next.js 15 Worker PWA (static export) | 3000 |
+| `apps/admin` | Next.js 15 Admin Dashboard (static export) | 3001 |
 
-```text
+**Tech Stack:**
+
+- **Runtime:** Node.js ≥20, npm 10.8.2
+- **API:** Hono + Drizzle ORM + Cloudflare Workers + D1 (SQLite)
+- **Frontend:** Next.js 15 (App Router), React 18.3.1, TypeScript strict mode
+- **Styling:** Tailwind CSS v4, shadcn/ui components
+- **Storage:** Cloudflare D1, R2, KV
+- **Monorepo:** Turborepo, npm workspaces
+- **Testing:** Vitest, Playwright (E2E)
+- **Automation:** Go scripts, JavaScript tooling, GitHub Actions
+
+---
+
+## Key Features | 주요 기능
+
+### Worker PWA (근로자 PWA)
+
+| Feature | Description |
+|---------|-------------|
+| **Hazard Reporting** | Report dangerous conditions with photo/video attachments |
+| **Attendance Logging** | Clock in/out with FAS system sync |
+| **Safety Points** | Earn and view accumulated safety points |
+| **Education** | Complete safety courses and quizzes |
+| **TBM Attendance** | Tool Box Meeting attendance tracking |
+| **Voting** | Participate in recommended votes |
+| **Announcements** | View site-wide notices |
+| **Push Notifications** | Receive web push alerts |
+| **Offline Support** | Queue automatically syncs when online |
+
+### Admin Dashboard (관리자 대시보드)
+
+| Feature | Description |
+|---------|-------------|
+| **Hazard Review** | Approve, reject, or request revision on reports |
+| **Attendance Stats** | View sync status and attendance statistics |
+| **Point Settlement** | Manage point policies and settlements |
+| **Content Management** | Create and manage education content |
+| **TBM Management** | Schedule and track TBM sessions |
+| **AI Announcements** | Draft announcements with AI assistance |
+| **Monitoring** | System health, audit logs, sync error tracking |
+| **Manual Processing** | Handle rewards and manual approvals |
+
+---
+
+## Architecture | 아키텍처
+
+```
 safetywallet/
 ├── apps/
-│   ├── api/              Cloudflare Worker API (Hono + D1)
-│   │   ├── src/routes/    18개 API 도메인, 133개 모듈
-│   │   ├── src/lib/       인증, FAS 연동, R2, 웹 푸시
-│   │   ├── src/jobs/      예약 작업, 일간 5개와 월간 5개
-│   │   ├── src/db/        Drizzle 스키마, 8개 파일, 34개 테이블
-│   │   ├── src/middleware/ CORS, 로깅, 분석, 보안 헤더
-│   │   ├── src/validators/ Zod 요청 스키마
-│   │   └── src/durable-objects/ RateLimiter, JobScheduler
-│   ├── admin/            관리자 대시보드 (Next.js 15, :3001)
-│   └── worker/           근로자 PWA (Next.js 15, :3000)
+│   ├── api/                 # Cloudflare Worker (Hono + Drizzle + D1)
+│   │   ├── src/routes/      # 18 API route modules
+│   │   ├── src/lib/         # Auth, FAS integration, R2 helpers
+│   │   ├── src/middleware/   # CORS, logging, analytics, security
+│   │   ├── src/db/          # Drizzle schema (34 tables)
+│   │   ├── src/durable-objects/ # RateLimiter, JobScheduler DOs
+│   │   ├── src/jobs/        # 10 scheduled cron jobs
+│   │   ├── src/validators/  # Zod request schemas
+│   │   └── migrations/      # 31 D1 SQL migrations
+│   ├── admin/               # Next.js 15 Admin (port 3001, static export)
+│   └── worker/              # Next.js 15 Worker PWA (port 3000, static export)
 ├── packages/
-│   ├── types/            공유 타입, enum, DTO, i18n 데이터
-│   └── ui/               공유 UI 컴포넌트 (shadcn/ui, 15개)
-├── e2e/                  Playwright E2E 테스트 (26개 스펙)
-├── scripts/              Go/JS 운영 스크립트
-└── docs/                 PRD, 요구사항 명세, 운영 가이드
+│   ├── types/               # Shared TS types, enums, DTOs, i18n
+│   └── ui/                  # Shared shadcn/ui components
+├── docs/                    # PRD, ops runbooks
+├── scripts/                 # Go/JS automation tooling
+├── e2e/                     # Playwright E2E tests
+├── .github/workflows/       # 33 GitHub Actions workflows
+├── wrangler.toml            # Cloudflare Worker config
+├── turbo.json               # Turborepo pipeline
+└── playwright.config.ts     # 6 Playwright projects
 ```
 
-## 시작하기
+### Authentication Flow
 
-### 요구사항
+```
+Login → JWT issued (KST midnight expiry) → Zustand store
+       → Triple-layer validation: JWT decode → KST date → KV cache → D1 fallback
+```
 
-- Node.js 20+
-- npm 10.8.2
-- [1Password CLI](https://developer.1password.com/docs/cli/) (E2E 실행용)
+### Authorization Model
 
-### 환경 설정
+- **Roles:** `WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`
+- **Permissions:** Role-based → site-specific membership → field flags
+- **Client Store:** Zustand persisted (`safetywallet-auth`, `safetywallet-admin-auth`)
 
-> [!TIP]
-> `.env.example`을 참고해서 `.env`를 만듭니다. E2E 테스트는 `.env.e2e`와 1Password CLI를 함께 씁니다. Cloudflare 바인딩 값은 `wrangler.toml`에서 확인합니다.
+---
 
-### 설치 및 실행
+## Automation Inventory | 자동화 목록
+
+### GitHub Actions Workflows | GitHub Actions 워크플로우
+
+#### CI/CD Pipeline
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `ci.yml` | Main CI pipeline: lint → typecheck → guards → test → build → migrate |
+| `standard-ci.yml` | Standardized CI reusable workflow |
+| `60_ci-auto-heal.yml` | Automatic CI healing on failure |
+| `37_ci-failure-issues.yml` | Create issues for CI failures |
+
+#### Pull Request Automation
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `01_branch-to-pr.yml` | Branch to PR automation |
+| `02_issue-to-branch.yml` | Issue to branch automation |
+| `03_pr-checks.yml` | PR checks workflow |
+| `44_reusable-pr-checks.yml` | Reusable PR checks |
+| `09_semantic-pr.yml` | Semantic PR validation |
+| `10_pr-review.yml` | PR review automation |
+| `security/11_pr-review.yml` | Security-focused PR review |
+| `13_pr-auto-merge.yml` | Automatic PR merge |
+| `12_dependabot-auto-merge.yml` | Dependabot auto-merge |
+| `14_bot-auto-fix.yml` | Bot automatic fixes |
+| `15_merged-pr-cleanup.yml` | Cleanup after merge |
+| `auto-merge.yml` | General auto-merge |
+
+#### Code Quality & Security
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `04_actionlint.yml` | GitHub Actions linting |
+| `05_gitleaks.yml` | Secret scanning |
+| `45_reusable-gitleaks.yml` | Reusable gitleaks |
+| `06_codeql.yml` | CodeQL analysis |
+| `07_dependency-review.yml` | Dependency vulnerability review |
+| `08_scorecard.yml` | Security scorecard |
+
+#### Documentation
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `20_readme-gen.yml` | README generation |
+| `21_docs-sync.yml` | Documentation sync |
+| `42_reusable-docs-sync.yml` | Reusable docs sync |
+
+#### Release Management
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `24_release-notes.yml` | Generate release notes |
+| `25_release-publish.yml` | Publish releases |
+
+#### Issue Management
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `18_issue-management.yml` | Issue management |
+| `43_reusable-issue-management.yml` | Reusable issue management |
+| `19_issue-backfill.yml` | Issue backfill |
+
+#### Other Automation
+
+| Workflow File | Purpose |
+|---------------|---------|
+| `29_downstream-health-check.yml` | Downstream service health |
+| `labeler.yml` | Auto-label PRs/issues |
+| `welcome.yml` | Welcome new contributors |
+
+### Automation Tools | 자동화 도구
+
+#### Go Scripts (`scripts/`)
+
+| Script | Purpose |
+|--------|---------|
+| `verify.go` | Comprehensive verification |
+| `git-preflight.go` | Git pre-flight checks |
+| `check-anti-patterns.go` | Anti-pattern detection |
+
+#### JavaScript Scripts (`scripts/`)
+
+| Script | Purpose |
+|--------|---------|
+| `lint-naming.js` | Naming convention linting |
+| `check-wrangler-sync.js` | Wrangler configuration sync check |
+
+#### npm Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `format` | Prettier formatting (TS, JS, JSON, MD) |
+| `lint:naming` | Run naming lint |
+| `check:wrangler-sync` | Check Wrangler sync |
+| `git:preflight` | Run Git preflight checks |
+| `verify` | Run comprehensive verification |
+
+#### Pre-commit Hooks (Husky)
+
+| Stage | Hooks |
+|-------|-------|
+| `*.{ts,tsx}` | `go run scripts/check-anti-patterns.go`, `prettier --write` |
+| `*.{js,jsx,json,md}` | `prettier --write` |
+
+---
+
+## Quick Start | 빠른 시작
+
+### Prerequisites
+
+- Node.js ≥20.0.0
+- npm 10.8.2+
+- Cloudflare Wrangler CLI (`npm i -g wrangler`)
+- 1Password CLI (for E2E tests, optional)
+
+### Installation
 
 ```bash
-# 의존성 설치
+# Clone repository
+git clone https://github.com/jclee941/safetywallet.git
+cd safetywallet
+
+# Install dependencies
 npm install
 
-# 개발 서버, Turborepo 병렬 실행
+# Setup husky (post-install hook)
+npm run prepare
+```
+
+### Environment Setup
+
+```bash
+# Copy environment template
+cp .env.example .env.local
+
+# Edit with your values
+# Required: D1 database, R2 buckets, KV namespace, FAS connection
+```
+
+### Development
+
+```bash
+# Start all apps in development mode
 npm run dev
 
-# worker: http://localhost:3000
-# admin:  http://localhost:3001
-# api:    http://localhost:8787
+# Worker PWA: http://localhost:3000
+# Admin Dashboard: http://localhost:3001
 ```
 
-### 주요 명령어
+### Build
 
 ```bash
-npm run dev             # 전체 개발 서버
-npm run build           # Turborepo 병렬 빌드
-npm run typecheck       # 워크스페이스 전체 타입 체크
-npm test                # Vitest 전체 실행 (341 파일)
-npm run e2e             # Playwright E2E, op run 필요
-npm run verify          # 전체 검증 파이프라인
-npm run format          # Prettier 포매팅
-npm run db:generate     # Drizzle 마이그레이션 생성
+# Build all packages and apps
+npm run build
+
+# Build API only
+npm run build:api
+
+# Build static assets
+npm run build:static
 ```
 
-## 아키텍처
+---
 
-### 호스팅 라우팅
+## Local Development | 로컬 개발
 
-단일 Cloudflare Worker가 hostname 기준으로 세 서비스를 나눠서 처리합니다.
-
-```text
-safetywallet.jclee.me/api/*  → Hono API
-safetywallet.jclee.me/*      → 근로자 PWA (Static)
-admin.safetywallet.jclee.me  → 관리자 SPA (Static)
-```
-
-### 인증 흐름
-
-```text
-로그인 → JWT 발급, KST 당일 자정 만료
-       → 3중 검증, JWT decode → KST 날짜 체크 → KV 캐시 → D1 폴백
-       → 3단계 권한, 역할(WORKER/SITE_ADMIN/SUPER_ADMIN) → 사이트 멤버십 → 필드 플래그
-```
-
-### 데이터베이스
-
-D1 (SQLite) 기반 34개 테이블, 8개 도메인입니다.
-
-<details>
-<summary><b>D1 (SQLite) 34개 테이블, 8개 도메인</b></summary>
-
-| 도메인      | 테이블 수 | 주요 테이블                                                                                  |
-| ----------- | --------: | -------------------------------------------------------------------------------------------- |
-| 사용자/인증 |         4 | users, pushSubscriptions, sites, siteMemberships                                             |
-| 안전 관리   |         4 | posts, postImages, reviews, pointsLedger                                                     |
-| 안전 활동   |         7 | actions, actionImages, auditLogs, announcements, attendance, accessPolicies, manualApprovals |
-| 투표/추천   |         5 | votes, voteCandidates, votePeriods, recommendations, disputes                                |
-| 교육        |         5 | educationContents, quizzes, quizQuestions, quizAttempts, educationCompletions                |
-| 훈련        |         3 | statutoryTrainings, tbmRecords, tbmAttendees                                                 |
-| 시스템      |         4 | joinCodeHistory, deviceRegistrations, pointPolicies, syncErrors                              |
-| 모니터링    |         2 | apiMetrics, imageAiAnalysis                                                                  |
-
-</details>
-
-### Cloudflare 바인딩
-
-<details>
-<summary><b>Cloudflare 바인딩 (11개)</b></summary>
-
-| 바인딩             | 타입             | 용도                                |
-| ------------------ | ---------------- | ----------------------------------- |
-| DB                 | D1               | 메인 데이터베이스, 34개 테이블      |
-| FAS_HYPERDRIVE     | Hyperdrive       | 외부 FAS 직원 DB 연동               |
-| ASSETS             | Static Assets    | 정적 프론트엔드, worker + admin SPA |
-| R2                 | R2 Bucket        | 사용자 업로드 이미지와 동영상       |
-| ACETIME_BUCKET     | R2 Bucket        | 출퇴근 관련 자산                    |
-| KV                 | KV Namespace     | 인증 캐시, 시스템 상태              |
-| NOTIFICATION_QUEUE | Queue            | 알림 전달 파이프라인                |
-| RATE_LIMITER       | Durable Object   | IP, 사용자별 속도 제한              |
-| JOB_SCHEDULER      | Durable Object   | 스케줄 작업 관리                    |
-| AI                 | Workers AI       | 얼굴 블러, 콘텐츠 분석              |
-| ANALYTICS          | Analytics Engine | 요청 분석, 메트릭                   |
-
-</details>
-
-### 데이터 흐름
-
-> [!NOTE]
-> **Client → API**: `apiFetch` 래퍼로 auth headers, retry, 401 refresh를 처리합니다.  
-> **Offline → reconnect sync**: IndexedDB 큐 `safetywallet_offline_queue`를 재연결 시 동기화합니다.  
-> **API → D1**: Drizzle ORM으로 DB binding을 사용합니다.  
-> **API → FAS**: Hyperdrive로 외부 직원 DB 동기화를 처리합니다.  
-> **API → R2**: 이미지와 동영상을 올리고, Workers AI 얼굴 블러와 perceptual hash 중복 제거를 적용합니다.  
-> **API → KV**: 세션 캐시와 시스템 상태 플래그를 저장합니다.  
-> **API → Queue**: 알림 전달을 하고, 실패 시 DLQ로 넘깁니다.  
-> **Observability**: Analytics Engine으로 요청 메트릭을 모읍니다.
-
-## CI/CD 파이프라인
-
-```text
-Push to master
-  │
-  ├─ Phase 1 (병렬)
-  │   ├── Lint & Typecheck      ✓
-  │   ├── Config Guards         ✓
-  │   ├── Code Quality          ✓
-  │   ├── Unit Tests (3,521)    ✓
-  │   ├── Security Audit        ✓
-  │   └── Secrets Scan          ✓
-  │
-  ├─ Phase 2 (단일 build matrix job, 3개 entry)
-  │   ├── Build matrix: api     ✓
-  │   ├── Build matrix: worker   ✓
-  │   ├── Build matrix: admin    ✓
-  │   ├── E2E Smoke Tests        ✓
-  │   └── D1 Migrate             ✓
-  │
-  └─ Phase 3
-      ├── Validate               ✓
-      ├── Slack Notification     ✓
-      └── Semantic Version       → v{x}.{y}.{z} 태그 생성
-```
-
-Semantic Versioning은 Conventional Commits를 기준으로 자동 처리합니다.
-
-- `feat:`는 minor bump
-- `fix:` / `ci:` / `refactor:`는 patch bump
-- `BREAKING CHANGE`는 major bump
-
-## 테스트
-
-### 단위 테스트
-
-| 워크스페이스           | 테스트 파일 | 테스트 수 | 커버리지 | 기준        |
-| ---------------------- | ----------: | --------: | -------- | ----------- |
-| `@safetywallet/api`    |         102 |     2,207 | 96%+     | 90/85/75/90 |
-| `@safetywallet/admin`  |         166 |       818 | 98%+     | 90/85/90/90 |
-| `@safetywallet/worker` |          59 |       437 | 98%+     | 90/85/90/90 |
-| `@safetywallet/types`  |           5 |        17 | 100%     | 80/80/80/80 |
-| `@safetywallet/ui`     |           9 |        42 | 100%     | 80/80/80/80 |
-
-전체 합계는 3,521개 테스트, 341개 테스트 파일입니다.
-
-> 기준 형식: `statements/branches/functions/lines`
-
-### E2E 테스트
-
-Playwright 스펙 파일은 26개입니다.
-
-- admin 15개
-- worker 11개
-
-Playwright 프로젝트는 6개입니다.
-
-- `admin-setup`
-- `worker-setup`
-- `worker-smoke`
-- `admin-smoke`
-- `worker`
-- `admin`
+### Individual App Development
 
 ```bash
-# 스모크 테스트, CI용
-npx playwright test --project=worker-smoke --project=admin-smoke
+# Worker PWA (port 3000)
+cd apps/worker && npm run dev
 
-# 전체 실행, 1Password 필요
-op run --env-file=.env.e2e -- npx playwright test
+# Admin Dashboard (port 3001)
+cd apps/admin && npm run dev
+
+# API (runs on Cloudflare Workers)
+cd apps/api && npx wrangler dev
 ```
 
-## 기여 규칙
+### Database
 
-- **커밋**: Conventional Commits (`type(scope): summary`)
-- **머지**: Squash merge only
-- **배포**: Cloudflare Git Integration, push to master 시 자동 배포
-- **PR 크기**: 200 LOC 이하 권장
-- **타입 안전성**: `as any`, `@ts-ignore`, `@ts-expect-error` 금지
-- **브랜치**: trunk-based development, 장기 feature 브랜치 금지
+```bash
+# Generate Drizzle migrations
+npm run db:generate
 
-## 라이선스
+# Apply migrations to local D1
+npx wrangler d1 migrations apply safetywallet-api --local
+```
 
-Private. All rights reserved.
+### Testing
+
+```bash
+# Run all tests
+npm run test
+
+# Run with coverage
+npm run test:coverage
+
+# Type checking
+npm run typecheck
+
+# Linting
+npm run lint
+
+# E2E tests (requires .env.e2e)
+npm run e2e
+
+# E2E with UI
+npm run e2e:ui
+
+# E2E headed
+npm run e2e:headed
+```
+
+### Code Quality
+
+```bash
+# Format all files
+npm run format
+
+# Check formatting
+npm run format:check
+
+# Naming convention check
+npm run lint:naming
+
+# Wrangler sync check
+npm run check:wrangler-sync
+
+# Git preflight
+npm run git:preflight
+```
+
+---
+
+## Commands Reference | 명령어 참조
+
+### Build Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run build` | Build all packages and apps |
+| `npm run build:api` | Build types package then API |
+| `npm run build:static` | Build static assets for deployment |
+| `npm run build:one-worker` | Build single worker (API) |
+
+### Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start all apps in development mode |
+| `npm run deploy:api` | Deploy API (disabled - Git-ref driven) |
+
+### Testing Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run test` | Run all tests via turbo |
+| `npm run test:coverage` | Run tests with coverage report |
+| `npm run typecheck` | Run TypeScript type checking |
+| `npm run e2e` | Run Playwright E2E tests |
+| `npm run e2e:ui` | Run Playwright with UI |
+| `npm run e2e:headed` | Run Playwright headed |
+
+### Quality Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run lint` | Run linting via turbo |
+| `npm run lint:naming` | Check naming conventions |
+| `npm run format` | Format all files with Prettier |
+| `npm run format:check` | Check formatting |
+| `npm run clean` | Clean build artifacts and node_modules |
+
+### Database Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run db:generate` | Generate Drizzle migrations |
+
+### Utility Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run check:wrangler-sync` | Verify Wrangler config sync |
+| `npm run git:preflight` | Run Git pre-flight checks |
+| `npm run verify` | Run comprehensive verification |
+| `npm run prepare` | Setup Husky pre-commit hooks |
+
+---
+
+## Contributing | 기여하기
+
+### Workflow
+
+1. **Fork** the repository
+2. **Clone** your fork
+3. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+4. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+5. **Push** to branch (`git push origin feature/amazing-feature`)
+6. **Open** a Pull Request
+
+### Guidelines
+
+- Follow the [CODE_STYLE.md](./CODE_STYLE.md) conventions
+- Run `npm run verify` before committing
+- Ensure `npm run test` passes
+- Update documentation if needed
+- Reference issues in commit messages
+
+### Code Review Process
+
+1. Automated checks run (CI)
+2. Maintainers review
+3. Address feedback
+4. Squash and merge
+
+### Commit Convention
+
+Use semantic commit messages:
+
+| Type | Description |
+|------|-------------|
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `docs:` |
