@@ -8,7 +8,6 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-blue.svg)](https://www.typescriptlang.org/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
 [![Turborepo](https://img.shields.io/badge/Turborepo-monorepo-black.svg)](https://turbo.build/)
-[![DeepScan Grade](https://deepscan.io/api/team/22898/projects/30199/branches/1234567/badge/grade.svg)](https://deepscan.io)
 
 ---
 
@@ -44,184 +43,212 @@ This repository contains the following main components:
 | `packages/types` | 공유 API 타입, DTO, enum, 다국어(i18n) 리소스 |
 | `packages/ui` | 공유 React UI 컴포넌트 (shadcn/ui + Tailwind v4) |
 
-GitHub Actions CI/CD 파이프라인이 모든 PR에 대해 리ント, 타입 체크, 테스트, 빌드를 자동으로 실행합니다.
-
 ---
 
 ## 주요 기능 / Features
 
-- **안전 신고 및 위험 관리** — 현장 작업자가 위험 요소를 신고하고追踪하는 기능
-- **출석 관리** — 현장별 출석 현황 관리 및 기록
-- **교육 콘텐츠** — 안전 교육 콘텐츠, 퀴즈, 교육 이수 관리
-- **게시판 및 투표** — 공지사항 게시, 의견 투표 시스템
-- **포인트 시스템** — 안전 활동에 대한 포인트 적립 및 관리
-- **리뷰 및 승인** — 현장 관리자가 안전 상태를 리뷰하고 승인
-- **多点 언어 지원** — 한국어, 영어, 베트남어, 중국어
+### 안전 관리 / Safety Management
+
+- 위험 신고 및 현장 안전 점검이
+- 안전 포인트 부여 및 추적
+- 안전 교육 이수 관리
+
+### 교육 시스템 / Education System
+
+- 교육 콘텐츠 관리 (동영상, 문서, 퀴즈)
+- 교육进程的 추적 및 관리
+- AI 기반 교육 추천
+
+### 게시 및 투표 / Posts & Voting
+
+- 현장별 게시판 운영
+- 투표 생성 및 참여
+- 공지사항 관리
+
+### 리뷰 및 평점 / Reviews & Ratings
+
+- 현장 안전 리뷰
+- 관리자 승인 프로세스
+
+### 근태 관리 / Attendance
+
+- 출석 체크 (워커 PWA)
+- 관리자 대시보드에서 근태 현황 조회
+- R2 기반 근태 관련 자료 저장
 
 ---
 
 ## 아키텍처 / Architecture
 
+### 시스템 아키텍처 / System Architecture
+
 ```mermaid
-flowchart TB
-    subgraph "GitHub Repository"
-        WS["workflows/\n34 workflow files"]
+ flowchart TB
+    subgraph Client["클라이언트 / Client"]
+        WorkerPWA["&lt;homelab-host&gt;:8317&lt;br/&gt;Worker PWA (Next.js 15)"]
+        AdminDashboard["&lt;homelab-host&gt;:8319&lt;br/&gt;Admin Dashboard (Next.js 15)"]
     end
 
-    subgraph "Developer Workstation"
-        DEV["Developer\nLocal Environment"]
-        TEST["Playwright\nE2E Tests"]
-    end
-
-    subgraph "Cloudflare Edge"
-        subgraph "apps/api"
-            API["Hono API\nCloudflare Worker"]
-            DO["Durable Objects\nRateLimiter, JobScheduler"]
-            CRON["Scheduled Jobs\n10 cron jobs"]
+    subgraph Cloudflare["Cloudflare Edge"]
+        API["API Worker&lt;br/&gt;(Hono + Drizzle + D1)"]
+        
+        subgraph Bindings["바인딩 / Bindings"]
+            D1["D1 Database&lt;br/&gt;(34 tables)"]
+            KV["KV Store&lt;br/&gt;(Auth Cache)"]
+            R2["R2 Storage&lt;br/&gt;(Media Assets)"]
+            Hyperdrive["Hyperdrive&lt;br/&gt;(FAS DB)"]
+            Queues["Queues&lt;br/&gt;(Notifications)"]
+            DurableObjects["Durable Objects&lt;br/&gt;(RateLimiter, Jobs)"]
         end
 
-        subgraph "Data Layer"
-            D1["D1 Database\n34 tables"]
-            KV["KV Store\nAuth cache, config"]
-            R2["R2 Storage\nAssets, uploads"]
-            QUEUE["Queue\nNotifications, DLQ"]
-        end
-
-        subgraph "apps/worker"
-            WORKER_PWA["Worker PWA\nNext.js 15 SPA\nPort 3000"]
-        end
-
-        subgraph "apps/admin"
-            ADMIN_DASH["Admin Dashboard\nNext.js 15 SPA\nPort 3001"]
+        subgraph ScheduledJobs["Cron Jobs (10 jobs)"]
+            Cron1["Attendance Sync"]
+            Cron2["Point Calculation"]
+            Cron3["Notification Dispatch"]
         end
     end
 
-    subgraph "External Services"
-        FAS["FAS Employee DB\nHyperdrive"]
-        BOT["AI Review Bot\nqodo-ai/pr-agent\nbot.jclee.me"]
-        PROXY["CLIProxy API\ncliproxy.jclee.me"]
+    subgraph External["외부 서비스 / External Services"]
+        FAS["FAS Employee DB&lt;br/&gt;(External System)"]
     end
 
-    DEV -->|"git push / PR"| WS
-    WS -->|"Automated CI/CD"| API
-    WS -->|"AI-assisted review"| BOT
-    BOT -->|"PR comments"| PROXY
-
-    API <-->|"R/W"| D1
-    API <-->|"R/W"| KV
-    API <-->|"R/W"| R2
-    API <-->|"Query"| FAS
-    API <-->|"Async jobs"| QUEUE
-    API <-->|"Rate limit"| DO
-    API <-->|"Schedule"| CRON
-
-    WORKER_PWA -->|"API calls"| API
-    ADMIN_DASH -->|"API calls"| API
-
-    DEV -->|"e2e tests"| TEST
-    TEST -->|"Browser automation"| WORKER_PWA
-    TEST -->|"Browser automation"| ADMIN_DASH
+    WorkerPWA -->|"HTTPS"| API
+    AdminDashboard -->|"HTTPS"| API
+    API --> D1
+    API --> KV
+    API --> R2
+    API --> Hyperdrive
+    API --> Queues
+    API --> DurableObjects
+    API --> FAS
+    API --> Cron1
+    API --> Cron2
+    API --> Cron3
 ```
 
-### 기술 스택 / Technology Stack
+### 모노레포 구조 / Monorepo Structure
 
-| 계층 / Layer | 기술 / Technology |
-|---|---|
-| API Framework | Hono (Cloudflare Workers) |
-| Database | Drizzle ORM + D1 (SQLite) |
-| Admin Frontend | Next.js 15 (App Router, Port 3001) |
-| Worker Frontend | Next.js 15 PWA (App Router, Port 3000) |
-| Shared Types | TypeScript + Zod validators |
-| UI Components | shadcn/ui + Tailwind CSS v4 |
-| Monorepo Tool | Turborepo |
-| E2E Testing | Playwright |
-| CI/CD | GitHub Actions |
-| AI Review | qodo-ai/pr-agent |
+```
+safetywallet/
+├── apps/
+│   ├── api/                    # Cloudflare Worker API
+│   │   ├── src/
+│   │   │   ├── routes/         # 18 API 라우트 모듈
+│   │   │   ├── lib/            # Auth, helpers, FAS integration
+│   │   │   ├── middleware/      # CORS, logging, security
+│   │   │   ├── db/             # Drizzle schema (34 tables)
+│   │   │   ├── durable-objects/ # RateLimiter, JobScheduler DOs
+│   │   │   ├── jobs/           # Cron job handlers
+│   │   │   └── validators/     # Zod 스키마
+│   │   ├── migrations/         # 31 D1 마이그레이션
+│   │   └── package.json
+│   ├── admin/                  # Next.js Admin Dashboard
+│   │   └── src/app/            # App Router
+│   └── worker/                 # Next.js Worker PWA
+│       └── src/app/            # App Router
+├── packages/
+│   ├── types/                  # 공유 타입, DTO, i18n
+│   │   └── src/
+│   │       ├── dto/            # 14 DTO 모듈
+│   │       └── i18n/           # 다국어 지원 (ko, en, vi, zh)
+│   └── ui/                     # 공유 React 컴포넌트
+│       └── src/components/     # 14개 컴포넌트
+├── scripts/                    # Go/JS tooling
+├── e2e/                        # Playwright E2E 테스트
+├── .github/
+│   └── workflows/              # 34개 GitHub Actions 워크플로우
+├── turbo.json                  # Turborepo 파이프라인
+├── wrangler.toml               # Cloudflare Workers 설정
+└── playwright.config.ts        # 6 Playwright 프로젝트
+```
 
 ---
 
 ## 자동화 인벤토리 / Automation Inventory
 
-### GitHub Actions 워크플로우 / Workflow Files
+### GitHub Actions 워크플로우 / Workflows
 
-이 저장소는 **34개의 워크플로우 파일**을 포함합니다:
+#### 브랜치 및 PR 관리 / Branch & PR Management
 
-#### Pull Request 워크플로우 / PR Workflows
-
-| 워크플로우 파일 / File | 설명 / Description |
+| 워크플로우 파일 / Workflow File | 설명 / Description |
 |---|---|
-| `01_branch-to-pr.yml` | 브랜치 생성 시 자동으로 PR 생성 |
-| `03_pr-checks.yml` | PR 기본 검사를 실행 (lint, typecheck, test) |
-| `09_semantic-pr.yml` | PR 제목의 semantic versioning 검증 |
-| `10_pr-review.yml` | AI 기반 PR 리뷰 (CLIProxy + qodo-ai/pr-agent) |
-| `13_pr-auto-merge.yml` | 조건 충족 시 PR 자동 병합 |
-| `14_bot-auto-fix.yml` | AI 봇이 자동 수정 후 PR 생성 |
-| `15_merged-pr-cleanup.yml` | 병합 후 브랜치 정리 |
-| `44_reusable-pr-checks.yml` | 재사용可能な PR检查模板 |
-| `security/11_pr-review.yml` | 보안 관련 PR 리뷰 |
+| `01_branch-to-pr.yml` | 브랜치에서 PR로 자동 전환 |
+| `02_issue-to-branch.yml` | 이슈에서 브랜치 생성 |
+| `03_pr-checks.yml` | PR 체크 실행 (lint, typecheck, test) |
+| `13_pr-auto-merge.yml` | 자동 병합 |
+| `15_merged-pr-cleanup.yml` | 병합 후 정리 작업 |
 
-#### 이슈 관리 워크플로우 / Issue Management Workflows
+#### 코드 보안 / Security
 
-| 워크플로우 파일 / File | 설명 / Description |
+| 워크플로우 파일 / Workflow File | 설명 / Description |
 |---|---|
-| `18_issue-management.yml` | 이슈 자동 라벨링 및 관리 |
-| `19_issue-backfill.yml` | 이슈 데이터 백필 |
-| `37_ci-failure-issues.yml` | CI 실패 시 자동 이슈 생성 |
-| `43_reusable-issue-management.yml` | 재사용 가능한 이슈 관리 템플릿 |
-| `91_issue-classification.yml` | AI 기반 이슈 분류 |
-
-#### 릴리스 및 배포 워크플로우 / Release & Deploy Workflows
-
-| 워크플로우 파일 / File | 설명 / Description |
-|---|---|
-| `24_release-notes.yml` | 자동 릴리스 노트 생성 |
-| `25_release-publish.yml` | 릴리스 게시 및 배포 |
-| `29_downstream-health-check.yml` |下游服务健康状态检查 |
-
-#### 보안 및 규정 준수 / Security & Compliance
-
-| 워크플로우 파일 / File | 설명 / Description |
-|---|---|
-| `04_actionlint.yml` | GitHub Actions YAML lint |
-| `05_gitleaks.yml` | シークレット 스캔 |
+| `05_gitleaks.yml` | 시크릿 스캐닝 |
 | `06_codeql.yml` | CodeQL 정적 분석 |
 | `07_dependency-review.yml` | 의존성 보안 검토 |
-| `08_scorecard.yml` | OpenSSF Scorecard 분석 |
-| `45_reusable-gitleaks.yml` | 재사용 가능한 Gitleaks 템플릿 |
+| `08_scorecard.yml` | OpenSSF Scorecard |
+| `45_reusable-gitleaks.yml` | 재사용可能な Gitleaks 액션 |
+| `security/11_pr-review.yml` | 보안 코드 리뷰 |
 
-#### 자동화 및 유지보수 / Automation & Maintenance
+#### PR 리뷰 자동화 / PR Review Automation
 
-| 워크플로우 파일 / File | 설명 / Description |
+| 워크플로우 파일 / Workflow File | 설명 / Description |
 |---|---|
-| `02_issue-to-branch.yml` | 이슈 기반 브랜치 생성 |
-| `12_dependabot-auto-merge.yml` | Dependabot PR 자동 병합 |
-| `20_readme-gen.yml` | AI 기반 README 생성 |
+| `10_pr-review.yml` | AI 기반 PR 리뷰 (qodo-ai/pr-agent) |
+| `14_bot-auto-fix.yml` | 자동 수정 봇 |
+
+#### 릴리스 및 배포 / Release & Deploy
+
+| 워크플로우 파일 / Workflow File | 설명 / Description |
+|---|---|
+| `24_release-notes.yml` | 자동 릴리스 노트 생성 |
+| `25_release-publish.yml` | 릴리스 게시 |
+| `44_reusable-pr-checks.yml` | 재사용 가능한 PR 체크 |
+
+#### 문서화 / Documentation
+
+| 워크플로우 파일 / Workflow File | 설명 / Description |
+|---|---|
+| `20_readme-gen.yml` | README 자동 생성 |
 | `21_docs-sync.yml` | 문서 동기화 |
-| `42_reusable-docs-sync.yml` | 재사용 가능한 문서 동기화 템플릿 |
-| `60_ci-auto-heal.yml` | CI 실패 자동 복구 |
-| `auto-merge.yml` | 자동 병합 라우터 |
+| `42_reusable-docs-sync.yml` | 재사용 가능한 문서 동기화 |
+
+#### 이슈 관리 / Issue Management
+
+| 워크플로우 파일 / Workflow File | 설명 / Description |
+|---|---|
+| `18_issue-management.yml` | 이슈 자동 라벨링/관리 |
+| `19_issue-backfill.yml` | 이슈 백필 |
+| `43_reusable-issue-management.yml` | 재사용 가능한 이슈 관리 |
+| `91_issue-classification.yml` | 이슈 분류 |
+
+#### CI/CD / CI/CD
+
+| 워크플로우 파일 / Workflow File | 설명 / Description |
+|---|---|
 | `ci.yml` | 주요 CI 파이프라인 |
-| `labeler.yml` | 파일 경로 기반 자동 라벨링 |
 | `standard-ci.yml` | 표준 CI 템플릿 |
-| `welcome.yml` | 신규 기여자 환영 메시지 |
+| `auto-merge.yml` | 자동 병합 설정 |
+| `labeler.yml` | 라벨 자동화 |
+| `welcome.yml` | 환영 메시지 |
 
-### 외부 AI 서비스 / External AI Services
+#### 유지보수 / Maintenance
 
-| 서비스 / Service | 엔드포인트 / Endpoint | 용도 / Purpose |
-|---|---|---|
-| qodo-ai/pr-agent | github.com/qodo-ai/pr-agent | AI-assisted PR 리뷰 및 수정 |
-| CLIProxy API | `https://cliproxy.jclee.me/v1` | README 생성, 문서화 AI |
-| Bot Service | `https://bot.jclee.me` |自动化辅助 |
+| 워크플로우 파일 / Workflow File | 설명 / Description |
+|---|---|
+| `04_actionlint.yml` | 워크플로우 lint |
+| `09_semantic-pr.yml` | 시맨틱 PR 검증 |
+| `12_dependabot-auto-merge.yml` | Dependabot 자동 병합 |
+| `29_downstream-health-check.yml` | 하위 서비스 상태 확인 |
+| `37_ci-failure-issues.yml` | CI 실패 시 이슈 생성 |
+| `60_ci-auto-heal.yml` | CI 자동 복구 |
 
-### 로컬 개발 도구 / Local Development Tools
+### 외부 통합 / External Integrations
 
-| 도구 / Tool | 파일 / File | 설명 / Description |
-|---|---|---|
-| Naming Lint | `scripts/lint-naming.js` |命名规范检查 |
-| Anti-Pattern Check | `scripts/check-anti-patterns.go` | 안티 패턴 검사 |
-| Wrangler Sync Check | `scripts/check-wrangler-sync.js` | Wrangler 설정 동기화 검증 |
-| Git Preflight | `scripts/git-preflight.go` | Git Hook pre-push 검증 |
-| Verify Script | `scripts/verify.go` | 통합 검증 |
+| 서비스 / Service | 용도 / Purpose |
+|---|---|
+| [qodo-ai/pr-agent](https://qodo-ai/pr-agent) | AI 기반 코드 리뷰 및 자동 수정 |
+| [cliproxy.jclee.me](https://cliproxy.jclee.me/v1) | README 생성 API |
+| [bot.jclee.me](https://bot.jclee.me) | 봇 서비스 |
 
 ---
 
@@ -229,187 +256,265 @@ flowchart TB
 
 ### 전제 조건 / Prerequisites
 
-- Node.js ≥ 20.0.0
-- npm 10.8.2 (packageManager 지정)
+- Node.js >= 20.0.0
+- npm 10.8.2
 - Git
+- Wrangler CLI (`npm install -g wrangler`)
+- Playwright (`npm install -g playwright`)
 
 ### 설치 / Installation
 
 ```bash
-# 저장소 클론
-git clone <repository-url>
-cd safetywallet
+# 저장소 복제
+git clone https://github.com/jclee941/.github
+cd SafetyWallet
 
 # 의존성 설치
 npm install
 
-# Husky Git Hooks 설정
+# Husky 훅 설정
 npm run prepare
 ```
 
-### 개발 서버 실행 / Start Development Servers
+### 개발 서버 실행 / Running Development Servers
 
 ```bash
-# 모든 워크스페이스 개발 서버 실행
+# 모든 앱 개발 모드 실행
 npm run dev
+
+# 개별 앱 실행
+npm run dev --workspace=apps/worker    # Worker PWA: http://localhost:3000
+npm run dev --workspace=apps/admin      # Admin Dashboard: http://localhost:3001
+npm run dev --workspace=apps/api        # API: http://localhost:8787
 ```
 
-각 애플리케이션이 다음 포트에서 실행됩니다:
+### 빌드 / Build
 
-| 애플리케이션 | URL |
-|---|---|
-| Worker PWA | <http://localhost:3000> |
-| Admin Dashboard | <http://localhost:3001> |
-| API (Hono) | Cloudflare Workers (로컬: `wrangler dev`) |
+```bash
+# 전체 빌드 (타입 → UI → 앱)
+npm run build
+
+# API만 빌드
+npm run build:api
+```
 
 ---
 
 ## 로컬 개발 / Local Development
 
-### 환경 변수 설정 / Environment Variables
+### 환경 변수 / Environment Variables
 
-E2E 테스트를 위한 환경 파일이 필요합니다:
+`.env` 파일을 생성하여 필요한 환경 변수를 설정하세요.
 
-```bash
-cp .env.example .env.e2e
-# .env.e2e 파일을 적절히 수정
+Create a `.env` file with the following variables:
+
+```env
+# Cloudflare Workers
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_API_TOKEN=your_api_token
+
+# Database
+D1_DATABASE_ID=your_d1_database_id
+
+# External Services
+FAS_API_URL=https://fas.example.com/api
+FAS_API_KEY=your_fas_api_key
+
+# Auth
+JWT_SECRET=your_jwt_secret
 ```
 
-### Wrangler 설정 / Wrangler Configuration
-
-루트 디렉토리의 `wrangler.toml`에 Cloudflare 바인딩이 정의되어 있습니다:
-
-- `DB` — D1 데이터베이스
-- `FAS_HYPERDRIVE` — 외부 FAS 직원 데이터베이스
-- `ASSETS` — Workers 정적 자산
-- `R2` — 사용자 업로드 스토리지
-- `ACETIME_BUCKET` — 출석 관련 자산
-- `KV` — 인증 캐시, 시스템 설정
-- `NOTIFICATION_QUEUE` / `NOTIFICATION_DLQ` — 알림 큐
-- `RATE_LIMITER` — Rate Limiter Durable Object
-
-### 데이터베이스 마이그레이션 / Database Migration
+### 로컬 데이터베이스 마이그레이션 / Local Database Migration
 
 ```bash
 # D1 마이그레이션 생성
-npm run db:generate
+npx wrangler d1 migrations create safetywallet "migration_name"
 
-# 마이그레이션 적용 (Cloudflare)
-wrangler d1 migrations apply safetywallet-db --remote
+# 마이그레이션 실행
+npx wrangler d1 execute safetywallet --local --file="./drizzle/migrations/xxxx_migration.sql"
+
+# 스키마에서 타입 생성
+npm run db:generate --workspace=apps/api
+```
+
+### 테스트 실행 / Running Tests
+
+```bash
+# 모든 테스트
+npm run test
+
+# 커버리지 포함 테스트
+npm run test:coverage
+
+# E2E 테스트
+npm run e2e
+
+# E2E UI 모드
+npm run e2e:ui
+
+# 헤드리스 E2E
+npm run e2e:headed
+```
+
+### 코드 품질 / Code Quality
+
+```bash
+# 포맷팅
+npm run format
+
+# 포맷팅 체크
+npm run format:check
+
+# 린트
+npm run lint
+
+# 타입 체크
+npm run typecheck
+
+# 네이밍 컨벤션 체크
+npm run lint:naming
 ```
 
 ---
 
 ## 명령어 참조 / Commands Reference
 
-### 빌드 및 개발 / Build & Development
+### 패키지 명령어 / Package Commands
 
-| 명령어 | 설명 |
+| 명령어 / Command | 설명 / Description |
 |---|---|
-| `npm run dev` | 모든 워크스페이스 개발 서버 실행 (turbo) |
-| `npm run build` | 전체 빌드 (types → ui → apps + 정적 파일) |
-| `npm run build:api` | API 애플리케이션만 빌드 |
-| `npm run build:one-worker` | API 워커만 빌드 |
-| `npm run build:static` | 정적 파일을 `dist/`로 복사 |
+| `npm run dev` | 모든 앱 개발 서버 실행 |
+| `npm run build` | 전체 빌드 (turbo + static) |
+| `npm run build:api` | API 패키지만 빌드 |
+| `npm run build:one-worker` | Worker만 빌드 |
+| `npm run test` | 모든 워크스페이스 테스트 실행 |
+| `npm run test:coverage` | 커버리지 포함 테스트 |
+| `npm run lint` | 모든 워크스페이스 린트 실행 |
+| `npm run typecheck` | 모든 워크스페이스 타입 체크 |
+| `npm run format` | Prettier 포맷팅 (쓰기) |
+| `npm run format:check` | Prettier 포맷팅 (체크) |
+| `npm run e2e` | Playwright E2E 테스트 |
+| `npm run e2e:ui` | Playwright UI 모드 |
+| `npm run e2e:headed` | Playwright 헤드리스 모드 |
+| `npm run clean` | node_modules 및 빌드 artifacts 정리 |
+| `npm run db:generate` | Drizzle 스키마에서 타입 생성 |
+| `npm run verify` | Git 및 코드 검증 스크립트 실행 |
+| `npm run check:wrangler-sync` | Wrangler 설정 동기화 확인 |
+| `npm run deploy:api` | API 배포 (비활성화 - Git ref로 배포) |
 
-### 코드 품질 / Code Quality
-
-| 명령어 | 설명 |
-|---|---|
-| `npm run lint` | 모든 워크스페이스 lint 실행 |
-| `npm run lint:naming` | 네이밍 규칙 검사 |
-| `npm run format` | Prettier로 코드 포맷팅 |
-| `npm run format:check` | Prettier 포맷팅 검증 |
-| `npm run typecheck` | TypeScript 타입 검사 |
-
-### 테스트 / Testing
-
-| 명령어 | 설명 |
-|---|---|
-| `npm run test` | 모든 워크스페이스 테스트 실행 (Vitest) |
-| `npm run test:coverage` | 커버리지 포함 테스트 실행 |
-| `npm run e2e` | Playwright E2E 테스트 실행 |
-| `npm run e2e:headed` | 헤드리스 모드로 E2E 테스트 |
-| `npm run e2e:ui` | Playwright UI 모드로 테스트 |
-
-### 배포 / Deployment
+### 워크스페이스 명령어 / Workspace Commands
 
 ```bash
-# ⚠️ 수동 배포 비활성화됨
-# 배포는 master 브랜치에 대한 CI/CD로 자동 실행
-npm run deploy:api
-# => "Manual deploy is disabled. Deploy is Git-ref driven via CI on master."
+# apps/api
+npm run dev --workspace=apps/api
+npm run build --workspace=apps/api
+
+# apps/admin
+npm run dev --workspace=apps/admin
+
+# apps/worker
+npm run dev --workspace=apps/worker
+
+# packages/types
+npm run build --workspace=packages/types
+npm run test --workspace=packages/types
+
+# packages/ui
+npm run build --workspace=packages/ui
+npm run test --workspace=packages/ui
 ```
 
-### 유지보수 / Maintenance
+### Husky 훅 / Husky Hooks
 
-| 명령어 | 설명 |
+| 훅 / Hook | 설명 / Description |
 |---|---|
-| `npm run verify` | Go 스크립트로 통합 검증 |
-| `npm run git:preflight` | Git pre-push 검증 |
-| `npm run check:wrangler-sync` | Wrangler 동기화 상태 확인 |
-| `npm run clean` | 모든 워크스페이스 정리 및 node_modules 삭제 |
-
-### Git Hooks (Husky)
-
-`lint-staged`가 설정되어 있어 다음 파일이 자동으로 포맷팅됩니다:
-
-- `*.{ts,tsx}` → Anti-pattern检查 + Prettier 포맷팅
-- `*.{js,jsx,json,md}` → Prettier 포맷팅
+| `pre-commit` | lint-staged 실행 (TypeScript, JavaScript, JSON, Markdown 포맷팅) |
 
 ---
 
 ## 기여 가이드 / Contributing Guide
 
-자세한 내용은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
+### 기여 방법 / How to Contribute
 
-### 커밋 메시지 규칙 / Commit Message Convention
+1. **이슈 생성 / Create Issue**
+   - 버그 리포트, 기능 요청, 문서 개선 등
+   - 적절한 라벨 선택
 
-이 프로젝트는 semantic PR을 사용합니다. 커밋 메시지는 다음과 같은 형식을 따르세요:
+2. **브랜치 생성 / Create Branch**
+   - `02_issue-to-branch.yml` 워크플로우 활용
+   - 네이밍 컨벤션: `feature/`, `fix/`, `docs/`, `refactor/`
+
+3. **개발 및 테스트 / Develop & Test**
+   - 코드 작성
+   - 테스트 작성 및 실행
+   -lint-staged 자동화 활용
+
+4. **PR 생성 / Create Pull Request**
+   - `01_branch-to-pr.yml` 활용
+   - 시맨틱 커밋 메시지 작성
+   -自动化 CI 체크 통과
+
+5. **리뷰 및 병합 / Review & Merge**
+   - AI 리뷰 (`10_pr-review.yml`)
+   - 자동 수정 (`14_bot-auto-fix.yml`)
+   - 관리자 승인 후 병합
+
+### 커밋 메시지 규칙 / Commit Message Rules
+
+시맨틱 버전을 준수하세요. `09_semantic-pr.yml` 워크플로우가 자동으로 검증합니다.
 
 ```
-<type>(<scope>): <subject>
-
-feat(api): add new safety report endpoint
-fix(worker): resolve attendance sync issue
-docs(readme): update deployment instructions
+feat: 새로운 기능 추가
+fix: 버그 수정
+docs: 문서 변경
+style: 코드 스타일 변경 (기능 변경 없음)
+refactor: 코드 리팩토링
+test: 테스트 추가/수정
+chore: 빌드 프로세스 또는 보조 도구 변경
 ```
-
-### PR 생성流程 / PR Creation Flow
-
-1. **브랜치 생성**: `02_issue-to-branch.yml`이 이슈에서 자동으로 브랜치를 생성하거나, 수동으로 생성
-2. **코드 작성**: 기능 구현 및 테스트 작성
-3. **PR 제출**: `01_branch-to-pr.yml`이 자동으로 PR을 생성
-4. **AI 리뷰**: `10_pr-review.yml`이 qodo-ai/pr-agent를 통해 AI-assisted 리뷰를 실행
-5. **CI 검사**: `03_pr-checks.yml`이 lint, typecheck, test를 실행
-6. **자동 병합**: 조건 충족 시 `13_pr-auto-merge.yml`이 자동으로 병합
 
 ### 코드 스타일 / Code Style
 
-자세한 내용은 [CODE_STYLE.md](CODE_STYLE.md)를 참고하세요.
+- TypeScript strict 모드
+- ESLint + Prettier
+-React 컴포넌트: 함수형 + Hooks
+-Tailwind CSS for styling
 
-### AGENTS.md 파일 / AGENTS.md Files
+자세한 내용은 [CODE_STYLE.md](./CODE_STYLE.md)를 참조하세요.
 
-이 저장소는 **60개의 AGENTS.md 파일**을 포함하는 광범위한 AI 프롬프트 문서를 가지고 있습니다. 각 패키지 및 주요 디렉토리에 해당 영역专属의 지침이 포함되어 있습니다:
+### 테스트 커버리지 / Test Coverage
 
-- [AGENTS.md](AGENTS.md) — 프로젝트 전반의 지침
-- [packages/types/AGENTS.md](packages/types/AGENTS.md) — 타입 및 DTO 지침
-- [packages/ui/AGENTS.md](packages/ui/AGENTS.md) — UI 컴포넌트 지침
-- [apps/api/AGENTS.md](apps/api/AGENTS.md) — API 개발 지침
-- 기타 각 디렉토리의 AGENTS.md 파일
+새로운 기능에는 반드시 테스트를 작성하세요:
+
+```bash
+# 유닛 테스트
+npm run test --workspace=packages/types
+npm run test --workspace=packages/ui
+
+# E2E 테스트
+npm run e2e
+```
+
+### 문서화 / Documentation
+
+- 코드 내 주석은 한국어와 영어 혼용 가능
+-公共 API는 JSDoc 주석 필수
+- README, AGENTS.md 파일은 자동 생성 (`20_readme-gen.yml`)
 
 ---
 
 ## 라이선스 / License
 
-이 프로젝트는 MIT 라이선스 하에 제공됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
+MIT License - 자세한 내용은 [LICENSE](./LICENSE) 파일을 참조하세요.
 
 ---
 
-<div align="center">
+## 지원 / Support
 
-**SafetyWallet** — 건설 현장 안전 관리 플랫폼
+- 이슈 생성: [GitHub Issues](https://github.com/jclee941/.github/issues)
+- 문서: [ARCHITURE.md](./ARCHITECTURE.md)
+- 내부 문서: `docs/` 디렉토리
 
-*Built with TypeScript, Cloudflare Workers, and Turborepo*
+---
 
-</div>
+*Last generated via CLIProxy API (README-gen model)*
