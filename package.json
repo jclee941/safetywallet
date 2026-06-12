@@ -61,13 +61,13 @@
     "better-sqlite3": "^12.10.0",
     "chokidar": "^5.0.0",
     "dotenv": "^17.4.2",
-    "happy-dom": "^20.10.1",
+    "happy-dom": "^20.10.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
-    "prettier": "^3.8.3",
-    "turbo": "^2.9.16",
+    "prettier": "^3.8.4",
+    "turbo": "^2.9.18",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18",
-    "wrangler": "^4.98.0"
+    "wrangler": "^4.100.0"
   }
 }
