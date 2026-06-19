@@ -96,7 +96,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - name: Set up Python 3.12
@@ -276,7 +276,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - name: Resolve issues linked to the merged PR
@@ -391,7 +391,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - name: Set up Python 3.12
@@ -562,7 +562,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - name: Sweep open issues linked to merged PRs
