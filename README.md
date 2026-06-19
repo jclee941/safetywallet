@@ -203,10 +203,10 @@ The following workflows are defined in the repository's `.github/workflows/` dir
 
 | 워크플로우 파일 / Workflow File | 설명 / Description |
 |---|---|
-| `18_issue-management.yml` | 이슈 자동 관리 / Automated issue management |
+| `jclee-bot App issue-management` | 이슈 자동 관리 / Automated issue management |
 | `19_issue-backfill.yml` | 이슈 백필/동기화 / Issue backfill/sync |
 | `37_ci-failure-issues.yml` | CI 실패 시 이슈 생성 / Create issue on CI failure |
-| `43_reusable-issue-management.yml` | 재사용 가능한 이슈 관리 / Reusable issue management |
+| `jclee-bot App issue-management` | 재사용 가능한 이슈 관리 / Reusable issue management |
 | `91_issue-classification.yml` | 이슈 자동 분류 / Auto-classify issues |
 
 #### 문서 및 릴리스 워크플로우 / Documentation & Release Workflows
