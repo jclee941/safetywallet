@@ -5,7 +5,7 @@
 
 ## Badges / 배지
 
-`License: MIT` · `Node.js: >=20.0.0` · `npm: 10.8.2` · `TypeScript` · `Next.js 15` · `Cloudflare Workers` · `D1 (SQLite)` · `Hono` · `Drizzle ORM` · `Turborepo` · `Vitest` · `Playwright`
+`License: MIT` · `Node.js: >=20.0.0` · `npm: 10.8.2` · `TypeScript` · `Next.js 15` · `Cloudflare Workers` · `D1 (SQLite)` · `Hono` · `Drizzle ORM` · `Turborepo` · `Vitest` · `Playwright` · `Trusted Web Activity (Android)`
 
 ## Overview / 개요
 
@@ -34,281 +34,295 @@ This repository is a TypeScript-based monorepo managed with npm workspaces and T
 ### Product Features / 제품 기능
 
 - **Mobile worker PWA / 모바일 작업자 PWA** — Hazard reporting, attendance logging, safety education, point-based engagement.
-- **Admin dashboard / 관리자 대시보드** — Attendance review, posts, votes, education management.
-- **Runtime i18n / 런타임 다국어** — `ko`, `en`, `vi`, `zh` translation bundles (see `apps/worker/I18N_IMPLEMENTATION.md`).
-- **Android TWA packaging / Android TWA 패키징** — Bubblewrap-generated Trusted Web Activity with launcher icons, splash screens, and shortcut assets.
-- **PWA manifest / PWA 매니페스트** — `web_app_manifest.json` shipped as a raw resource under `res/raw/`.
+- **Admin dashboard / 관리자 대시보드** — Attendance review, posts, votes, education management, settlements, and compliance oversight.
+- **Android TWA / 안드로이드 TWA** — `apps/worker/android/` wraps the worker PWA as an installable Trusted Web Activity for low-friction field deployment.
+- **Multi-locale i18n / 다국어 지원** — Custom i18n runtime covering `ko`, `en`, `vi`, `zh` (translation data lives in `packages/types`).
 
-### Engineering Features / 엔지니어링 기능
+### Platform Features / 플랫폼 기능
 
-- **Monorepo / 모노레포** — npm workspaces orchestrated by Turborepo (`turbo run build`).
-- **Single Worker router / 단일 Worker 라우터** — One Cloudflare Worker serves Hono API and both static SPAs via hostname routing.
-- **34-table D1 schema / 34 테이블 D1 스키마** — Drizzle ORM with 31 SQL migrations.
-- **Triple-layer auth / 3중 인증 검증** — JWT decode → KST date check → KV cache → D1 fallback.
-- **Three-tier permissions / 3단계 권한 모델** — Role → site membership → field-level flags (`canAwardPoints`, `canReview`, `canExportData`).
-- **Hyperdrive to external FAS / 외부 FAS 연결** — `FAS_HYPERDRIVE` binding for the employee system.
-- **Durable Objects / Durable Objects** — `RateLimiter`, `JobScheduler`.
-- **10 scheduled cron jobs / 10개 스케줄 크론 잡** — Embedded inside the API Worker.
-- **Queues + DLQ / 큐와 DLQ** — `NOTIFICATION_QUEUE` / `NOTIFICATION_DLQ` for async notifications.
-- **R2 storage / R2 스토리지** — `R2` for user uploads, `ACETIME_BUCKET` for attendance assets.
-- **E2E coverage / E2E 테스트** — 6 Playwright projects with auth setup.
-- **Pre-commit hooks / 커밋 전 훅** — Husky + lint-staged with Go-based anti-pattern checks.
-- **Living docs / 살아 있는 문서** — 60 `AGENTS.md` files generated via `init-deep` across the codebase.
+- **Single-Worker deploy / 단일 Worker 배포** — One Cloudflare Worker routes by hostname: `worker.*` → worker SPA, `admin.*` → admin SPA, `api.*` (or path prefix) → Hono API.
+- **D1 + Drizzle ORM** — 34 SQLite tables managed by Drizzle, with 31 SQL migrations and codegen-driven types.
+- **Triple-layer auth / 3중 인증 검증** — JWT decode → KST same-day midnight expiry check → KV cache lookup → D1 fallback. Tokens are stored in a Zustand persisted store with a 401 refresh mutex.
+- **Three-tier authorization / 3단계 인가** — Role (`WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`) → site-specific membership → field-level flags (`canAwardPoints`, `canReview`, `canExportData`).
+- **Durable Objects + Cron jobs / Durable Objects + Cron 작업** — `RateLimiter` and `JobScheduler` DOs coordinate 10 scheduled cron jobs (attendance rollup, point expiry, notifications, etc.).
+- **Async notification pipeline / 비동기 알림 파이프라인** — `NOTIFICATION_QUEUE` with `NOTIFICATION_DLQ` for reliable push delivery.
+- **End-to-end test matrix / E2E 테스트 매트릭스** — 6 Playwright projects covering auth setup, admin flows, and worker flows, gated on `1Password CLI` secrets.
 
 ## Architecture / 아키텍처
 
+### High-level request flow / 요청 흐름
+
 ```mermaid
 flowchart TB
-    WorkerUser["Field Worker<br/>(mobile browser)"]
-    AdminUser["Site Admin<br/>(desktop browser)"]
+  subgraph Clients["Clients / 클라이언트"]
+    PWA["Worker Mobile PWA<br/>apps/worker (Next.js 15, static export)"]
+    Admin["Admin Web Dashboard<br/>apps/admin (Next.js 15, static export)"]
+    TWA["Android TWA<br/>apps/worker/android/<br/>Trusted Web Activity"]
+  end
 
-    subgraph Edge["Cloudflare Edge"]
-        direction TB
-        WorkerSPA["apps/worker<br/>Next.js 15 static export<br/>hostname: worker"]
-        AdminSPA["apps/admin<br/>Next.js 15 static export<br/>hostname: admin"]
-        Router["Single Cloudflare Worker<br/>Hono API + hostname routing"]
-        ASSETS["Workers Static Assets<br/>ASSETS binding"]
-    end
+  subgraph Edge["Cloudflare Edge"]
+    Worker["Cloudflare Worker<br/>(single deploy)<br/>Hono router + hostname routing"]
+  end
 
-    subgraph Data["Data Layer"]
-        D1["D1 (SQLite)<br/>34 tables via Drizzle"]
-        KV["KV namespace<br/>auth cache + system status"]
-        R2["R2 bucket<br/>R2 + ACETIME_BUCKET"]
-        HD["Hyperdrive<br/>FAS_HYPERDRIVE"]
-        Q["Queues<br/>NOTIFICATION_QUEUE<br/>NOTIFICATION_DLQ"]
-        DO["Durable Objects<br/>RateLimiter + JobScheduler"]
-    end
+  subgraph Bindings["Worker Bindings"]
+    D1[("D1<br/>DB — 34 tables")]
+    R2[("R2<br/>User uploads")]
+    Ace[("R2<br/>ACETIME_BUCKET")]
+    KV[("KV<br/>Auth + config cache")]
+    HD["Hyperdrive<br/>FAS_HYPERDRIVE"]
+    Queue["Queue<br/>NOTIFICATION_QUEUE / DLQ"]
+    DO["Durable Objects<br/>RateLimiter, JobScheduler"]
+  end
 
-    FAS["FAS Employee System<br/>(external)"]
+  subgraph External["External Services / 외부 서비스"]
+    FAS["FAS Employee DB<br/>(accessed via Hyperdrive)"]
+    Push["Push Notification Provider"]
+  end
 
-    WorkerUser --> WorkerSPA
-    AdminUser --> AdminSPA
-    WorkerSPA --> Router
-    AdminSPA --> Router
-    Router --> ASSETS
-    Router --> D1
-    Router --> KV
-    Router --> R2
-    Router --> HD
-    Router --> Q
-    Router --> DO
-    HD --> FAS
+  subgraph Homelab["Homelab LLM Gateway / 홈랩 LLM 게이트웨이"]
+    CLI["CLIProxyAPI<br/>&lt;homelab-host&gt;:8317<br/>https://cliproxy.jclee.me/v1"]
+  end
+
+  subgraph CI["GitHub Actions CI/CD"]
+    Rev["10_pr-review.yml<br/>11_security-pr-review.yml"]
+    Auto["13_pr-auto-merge.yml<br/>14_bot-auto-fix.yml"]
+    Rel["24_release-notes.yml<br/>25_release-publish.yml"]
+  end
+
+  TWA -.wraps.-> PWA
+  PWA -- "worker.*" --> Worker
+  Admin -- "admin.*" --> Worker
+
+  Worker --> D1
+  Worker --> R2
+  Worker --> Ace
+  Worker --> KV
+  Worker --> HD
+  Worker --> Queue
+  Worker --> DO
+
+  HD --> FAS
+  Queue --> Push
+
+  Rev -. "LLM completion request" .-> CLI
+  CLI -. "review comments" .-> Rev
+  Rev --> Auto
+  Auto --> Rel
 ```
 
-### Authentication flow / 인증 흐름
+### Cloudflare Bindings / Cloudflare 바인딩
 
-1. Login form → credentials POSTed to the Worker API.
-2. API issues a JWT whose `exp` is KST same-day midnight.
-3. JWT is stored in a Zustand-persisted client store:
-   - Worker key: `safetywallet-auth`
-   - Admin key: `safetywallet-admin-auth`
-4. Every protected request is validated through three layers: decode → KST expiry check → KV cache → D1 fallback.
-5. A 401 triggers a refresh-mutex replay on the client.
-
-### Cloudflare bindings / Cloudflare 바인딩
-
-| Binding | Type | Purpose |
+| Binding | Type | Purpose / 용도 |
 | --- | --- | --- |
-| `DB` | D1 | Primary database (34 tables, Drizzle ORM) |
-| `FAS_HYPERDRIVE` | Hyperdrive | Connection pool to external FAS employee DB |
-| `ASSETS` | Workers Static Assets | Static frontend bundles (worker + admin SPAs) |
+| `DB` | D1 | Primary database — 34 tables, SQLite via Drizzle |
+| `FAS_HYPERDRIVE` | Hyperdrive | Connection pool to the external FAS employee database |
+| `ASSETS` | Workers Static Assets | Served static frontend files (worker + admin SPAs) |
 | `R2` | R2 | User-uploaded images and videos |
-| `ACETIME_BUCKET` | R2 | Attendance-related assets |
+| `ACETIME_BUCKET` | R2 | Attendance-related assets (signatures, photos) |
 | `KV` | KV | Auth cache, system status, runtime config |
-| `NOTIFICATION_QUEUE` | Queue | Async notification delivery |
-| `NOTIFICATION_DLQ` | Queue | Notification dead-letter |
-| `RATE_LIMITER` | Durable Object | Request throttling |
-| `JOB_SCHEDULER` | Durable Object | 10 scheduled cron jobs |
+| `NOTIFICATION_QUEUE` / `NOTIFICATION_DLQ` | Queue | Async notification delivery with dead-letter handling |
+| `RATE_LIMITER` | Durable Object | Per-IP / per-user rate limiting |
+| `JOB_SCHEDULER` | Durable Object | Coordinates 10 scheduled cron jobs |
+
+### Authentication & Authorization / 인증 및 인가
+
+- **Login → JWT** — JWT is issued with KST same-day midnight expiry and stored in a Zustand persisted store. Worker key: `safetywallet-auth`; admin key: `safetywallet-admin-auth`.
+- **Triple-layer validation / 3중 검증** — JWT decode → KST date check → KV cache lookup → D1 fallback.
+- **Three-tier authorization / 3단계 인가** — Role-based gate → site-specific membership → field-level flags (`canAwardPoints`, `canReview`, `canExportData`).
+- **Repo guidance / 저장소 가이드** — Per-module conventions are documented in 60 `AGENTS.md` files distributed across the codebase. Start at the root `AGENTS.md` and follow `AGENTS.md` links down into each app.
 
 ## Automation Inventory / 자동화 인벤토리
 
-### GitHub Actions workflows (16) / GitHub Actions 워크플로 (16)
+### GitHub Actions Workflows / GitHub Actions 워크플로우 (16)
 
-| File | Trigger | Purpose |
+| File | Trigger / 트리거 | Purpose / 목적 |
 | --- | --- | --- |
-| `01_branch-to-pr.yml` | push to non-default branch | Convert a pushed branch into a pull request with a body template. |
-| `02_issue-to-branch.yml` | issue opened / labeled | Materialize an issue into a draft branch + PR scaffold. |
-| `10_pr-review.yml` | PR open / synchronize | Run [qodo-ai/pr-agent](https://github.com/qodo-ai/pr-agent) code review on the diff. |
-| `11_security-pr-review.yml` | PR open / synchronize | Run a security-focused PR review pass (SAST/SCA hints). |
-| `12_dependabot-auto-merge.yml` | Dependabot PR | Auto-merge routine dependency bumps once checks are green. |
-| `13_pr-auto-merge.yml` | PR labeled `auto-merge` | Auto-merge approved PRs after CI is green. |
-| `14_bot-auto-fix.yml` | PR comment `/fix` | Bot applies review suggestions and pushes commits. |
-| `15_merged-pr-cleanup.yml` | PR closed / merged | Delete merged feature branches. |
-| `19_issue-backfill.yml` | schedule | Backfill missing labels / milestones on stale issues. |
-| `24_release-notes.yml` | tag pushed | Generate release notes from merged PRs. |
-| `25_release-publish.yml` | release published | Publish artifacts and notify downstream. |
-| `29_downstream-health-check.yml` | schedule + dispatch | Probe downstream services (FAS Hyperdrive, etc.) for regressions. |
-| `37_ci-failure-issues.yml` | CI failure on `master` | Open / refresh an issue when CI fails. |
-| `60_ci-auto-heal.yml` | CI failure | Apply bot-generated fix PRs to recover from CI failures. |
-| `91_issue-classification.yml` | issue opened | Auto-classify and label incoming issues. |
-| `ci.yml` | push / PR | Primary CI: install → lint → typecheck → guard checks → test → build. |
+| `ci.yml` | push, PR | Main CI pipeline — lint → typecheck → guards → test → build → migrate |
+| `01_branch-to-pr.yml` | push to non-default branch | Convert a pushed branch into a draft pull request |
+| `02_issue-to-branch.yml` | labeled issue | Auto-create a branch + draft PR from an issue template |
+| `10_pr-review.yml` | PR open/sync | LLM-based PR review using `qodo-ai/pr-agent` against the homelab CLIProxyAPI endpoint |
+| `11_security-pr-review.yml` | PR open/sync | Security-focused PR review pass (SAST-style diff analysis) |
+| `12_dependabot-auto-merge.yml` | Dependabot PR | Auto-merge patch/minor Dependabot PRs after CI passes |
+| `13_pr-auto-merge.yml` | PR labeled `auto-merge` | Auto-merge approved PRs that satisfy all required checks |
+| `14_bot-auto-fix.yml` | bot review comment | Apply bot-suggested fixes in a follow-up commit on the same branch |
+| `15_merged-pr-cleanup.yml` | PR closed/merged | Delete the source branch and any stale remote refs |
+| `19_issue-backfill.yml` | schedule / manual | Backfill missing fields on legacy issues (labels, milestones, projects) |
+| `24_release-notes.yml` | tag push | Generate categorized release notes from PRs / commits |
+| `25_release-publish.yml` | tag push | Build, publish, and attach release artifacts (Worker + SPAs) |
+| `29_downstream-health-check.yml` | schedule | Smoke-test downstream services (FAS via Hyperdrive, push provider) |
+| `37_ci-failure-issues.yml` | CI workflow failure | Open a triage issue when a required CI workflow fails on `master` |
+| `60_ci-auto-heal.yml` | CI workflow failure | Attempt deterministic auto-heal actions (cache purge, retry, lock reset) |
+| `91_issue-classification.yml` | new/edited issue | Classify incoming issues (label + project + assignee suggestion) |
 
-### Go automation tools (0) / Go 자동화 도구 (0)
+### Internal Tooling / 내부 도구
 
-The repository currently ships zero standalone Go automation binaries. All Go-based checks referenced from `package.json` (`scripts/git-preflight.go`, `scripts/verify.go`, `scripts/check-anti-patterns.go`) live inside `scripts/` and are invoked via `go run`. JS-based companions (`scripts/lint-naming.js`, `scripts/check-wrangler-sync.js`) cover naming and wrangler-sync checks respectively.
+These are developer-facing scripts invoked via `npm` (or directly). They are not standalone GitHub-Action tools; they run in CI, in `lint-staged`, and locally.
 
-### Bot auto-fix loop / 봇 자동 수정 루프
+| Tool | Type | Purpose / 용도 |
+| --- | --- | --- |
+| `scripts/verify.go` | Go | `npm run verify` — full pre-push gate (lint, typecheck, naming, wrangler sync, tests) |
+| `scripts/git-preflight.go` | Go | `npm run git:preflight` — branch / commit-message / WIP guard before push |
+| `scripts/check-anti-patterns.go` | Go | `lint-staged` hook — blocks anti-patterns in staged `*.{ts,tsx}` |
+| `scripts/lint-naming.js` | Node | `npm run lint:naming` — enforces file/folder naming conventions |
+| `scripts/check-wrangler-sync.js` | Node | `npm run check:wrangler-sync` — verifies root `wrangler.toml` matches workspace configs |
+| `husky` pre-commit | Hook | Runs `lint-staged` (Go anti-pattern check + Prettier) on staged files |
+| `playwright.config.ts` | Config | 6 Playwright projects driving `npm run e2e` (secrets via 1Password CLI) |
 
-```text
-review (10_pr-review.yml / 11_security-pr-review.yml)
-  → comment /fix on the PR
-  → 14_bot-auto-fix.yml commits a suggested patch
-  → ci.yml re-runs the gate
-  → 13_pr-auto-merge.yml merges when green
-  → 15_merged-pr-cleanup.yml deletes the branch
-  → 24_release-notes.yml folds the change into the next release
-```
+> External LLM gateway used by `10_pr-review.yml` and `11_security-pr-review.yml`: the homelab **CLIProxyAPI** at `https://cliproxy.jclee.me/v1` (reachable on the LAN as `&lt;homelab-host&gt;:8317`). Review actions are posted by `qodo-ai/pr-agent`.
 
 ## Quick Start / 빠른 시작
 
 ### Prerequisites / 사전 요구 사항
 
-- Node.js **>= 20.0.0** (enforced by `package.json` `engines`)
-- npm **10.8.2** (enforced by `packageManager`)
-- A Cloudflare account with D1, R2, KV, Queues, and Hyperdrive enabled
-- Wrangler authenticated (`npx wrangler login`)
+- Node.js `>=20.0.0` (see `engines` in `package.json`)
+- npm `10.8.2` (pinned via `packageManager`)
+- Wrangler CLI authenticated against your Cloudflare account
+- A populated `.dev.vars` for local Worker secrets
+- 1Password CLI (`op`) signed in, for E2E secrets (`E2E_*`)
 
 ### Install / 설치
 
 ```bash
 npm install
+cp .dev.vars.example .dev.vars   # then fill in D1, R2, KV, JWT secret, etc.
 ```
 
-### Build everything / 전체 빌드
+### First build / 첫 빌드
 
 ```bash
-npm run build           # turbo build + bundle static SPA into ./dist
+npm run build                # turbo build + assemble dist/
+npm run db:generate          # Drizzle codegen for types
 ```
 
-### Run the dev server / 개발 서버 실행
+### Run the dev loop / 개발 서버 실행
 
 ```bash
-npm run dev             # turbo run dev across all workspaces
+npm run dev                  # turbo-pipelined dev: api (wrangler) + admin (3001) + worker (3000)
 ```
 
-Default ports: `3000` (worker PWA) and `3001` (admin dashboard). The Worker API runs locally via `wrangler dev`.
+Open:
+
+- Worker PWA: <http://localhost:3000>
+- Admin dashboard: <http://localhost:3001>
+- Worker API: <http://localhost:8787> (Wrangler default)
 
 ## Local Development / 로컬 개발
 
-### Per-workspace dev commands / 워크스페이스별 실행
-
-| Workspace | Command | Notes |
-| --- | --- | --- |
-| `apps/worker` | `npm run dev --workspace=apps/worker` | Next.js dev server on port 3000 |
-| `apps/admin` | `npm run dev --workspace=apps/admin` | Next.js dev server on port 3001 |
-| `apps/api` | `npx wrangler dev --config apps/api/wrangler.toml` | Cloudflare Worker locally |
-| `packages/types` | `npm run build --workspace=packages/types` | Must build first (consumed by all apps) |
-| `packages/ui` | `npm run build --workspace=packages/ui` | Component library consumed by both SPAs |
-
-### Database / 데이터베이스
-
-```bash
-# Apply migrations to remote D1
-npx wrangler d1 migrations apply DB --remote
-
-# Apply migrations to local D1 (wrangler dev)
-npx wrangler d1 migrations apply DB --local
-
-# Regenerate Drizzle schema artifacts
-npm run db:generate
-```
-
-### E2E tests / E2E 테스트
-
-E2E tests require a `.env.e2e` file managed by `op` (1Password CLI):
-
-```bash
-npm run e2e            # headless
-npm run e2e:headed     # headed
-npm run e2e:ui         # Playwright UI mode
-```
-
-### Pre-commit hooks / 커밋 전 훅
-
-Husky runs `lint-staged`, which for `*.ts` / `*.tsx` files applies:
-
-1. `go run scripts/check-anti-patterns.go` — bans unsafe TS / React patterns.
-2. `prettier --write` — formatter.
-
-For `*.{js,jsx,json,md}` files, only Prettier is applied.
-
-### Android TWA build / Android TWA 빌드
-
-```bash
-cd apps/worker/android
-./gradlew assembleRelease          # build signed AAB
-./gradlew installDebug             # sideload on a connected device
-```
-
-## Commands Reference / 명령어 레퍼런스
-
-| Command | Description / 설명 |
-| --- | --- |
-| `npm run build` | Build all workspaces and assemble the static bundle in `dist/`. |
-| `npm run build:api` | Build the API Worker only (after building `packages/types`). |
-| `npm run build:static` | Export and merge the two Next.js SPAs into `dist/` and `dist/admin/`. |
-| `npm run build:one-worker` | Convenience alias for `build:api`. |
-| `npm run dev` | Run all workspace dev servers in parallel via Turborepo. |
-| `npm run deploy:api` | Refuses to run locally — deploys are Git-ref driven via CI on `master`. |
-| `npm run lint` | Run `turbo run lint` across workspaces. |
-| `npm run lint:naming` | Run the file / identifier naming lint (`scripts/lint-naming.js`). |
-| `npm run test` | Run Vitest in every workspace. |
-| `npm run test:coverage` | Run Vitest with coverage. |
-| `npm run typecheck` | Run `tsc --noEmit` across workspaces. |
-| `npm run check:wrangler-sync` | Verify `wrangler.toml` matches the expected bindings. |
-| `npm run git:preflight` | Go-based git hygiene check before commit. |
-| `npm run verify` | Go-based verification of repo invariants. |
-| `npm run format` | Format all source files with Prettier. |
-| `npm run format:check` | Verify formatting without writing. |
-| `npm run clean` | Remove build outputs and `node_modules`. |
-| `npm run db:generate` | Regenerate Drizzle artifacts. |
-| `npm run e2e` | Run Playwright E2E suite (1Password-encrypted env). |
-
-## Project Layout / 프로젝트 구성
+### Workspace layout / 워크스페이스 구조
 
 ```text
 .
 ├── apps/
-│   ├── api/                    # Cloudflare Worker API (Hono + Drizzle + D1)
-│   │   ├── src/routes/         # 18 API route modules (admin/ nested)
-│   │   ├── src/lib/            # Auth, helpers, FAS integration, R2
-│   │   ├── src/middleware/     # CORS, logging, analytics, security headers
-│   │   ├── src/db/             # Drizzle schema (34 tables), seed, helpers
-│   │   ├── src/durable-objects/# RateLimiter, JobScheduler DOs
-│   │   ├── src/jobs/           # 10 scheduled cron jobs
-│   │   ├── src/validators/     # Zod request schemas
-│   │   └── migrations/         # 31 D1 SQL migrations
-│   ├── admin/                  # Next.js 15 admin dashboard (port 3001, static export)
-│   │   └── src/app/            # App Router: attendance, posts, votes, education
-│   └── worker/                 # Next.js 15 worker PWA (port 3000, static export)
-│       ├── src/app/            # App Router: login, posts, attendance, education
-│       ├── src/i18n/           # Custom i18n runtime (ko, en, vi, zh)
-│       ├── src/components/     # Worker-specific UI components
-│       └── android/            # Bubblewrap-generated TWA project
+│   ├── api/                 # Cloudflare Worker API (Hono + Drizzle + D1)
+│   │   ├── src/routes/      # 18 API route modules (admin/ nested)
+│   │   ├── src/lib/         # Auth, helpers, FAS integration, R2
+│   │   ├── src/middleware/  # CORS, logging, analytics, security headers
+│   │   ├── src/db/          # Drizzle schema (34 tables), seed, helpers
+│   │   ├── src/durable-objects/ # RateLimiter, JobScheduler DOs
+│   │   ├── src/jobs/        # 10 scheduled cron jobs
+│   │   ├── src/validators/  # Zod request schemas
+│   │   └── migrations/      # 31 D1 SQL migrations
+│   ├── admin/               # Next.js 15 admin dashboard (port 3001, static export)
+│   │   └── src/app/         # App Router: attendance, posts, votes, education
+│   └── worker/              # Next.js 15 worker PWA (port 3000, static export)
+│       ├── android/         # Trusted Web Activity wrapper for Android
+│       ├── src/app/         # App Router: login, posts, attendance, education
+│       ├── src/i18n/        # Custom i18n runtime (ko, en, vi, zh)
+│       └── src/components/  # Worker-specific UI components
 ├── packages/
-│   ├── types/                  # Shared TS types, enums, DTOs, i18n data
-│   └── ui/                     # Shared shadcn/ui + Tailwind v4 theme tokens
-├── docs/                       # PRD, requirements specs, ops runbooks
-├── scripts/                    # Go/JS tooling (verify, naming lint, anti-patterns)
-├── e2e/                        # Playwright E2E tests (auth setup, admin, worker flows)
-├── .github/workflows/          # 16 GitHub Actions workflows
-├── wrangler.toml               # Root CF Worker config + all bindings
-├── turbo.json                  # Turborepo pipeline (types → ui → apps)
-└── playwright.config.ts        # 6 Playwright projects
+│   ├── types/               # Shared TS types, enums, DTOs, i18n data
+│   └── ui/                  # Shared shadcn/ui + Tailwind v4 theme tokens
+├── docs/                    # PRD, requirements specs, ops runbooks
+├── scripts/                 # Go/JS tooling (verify, naming, anti-patterns, wrangler sync)
+├── e2e/                     # Playwright E2E tests (auth setup, admin, worker flows)
+├── .github/workflows/       # 16 CI/CD workflows (see Automation Inventory)
+├── wrangler.toml            # Root CF Worker config + all bindings
+├── turbo.json               # Turborepo pipeline (types → ui → apps)
+└── playwright.config.ts     # 6 Playwright projects
 ```
 
-> Provided snapshot only shows `apps/worker` (with its `android/` subtree) on disk; the rest is documented from `AGENTS.md` / `ARCHITECTURE.md`.
+### Pre-commit / Pre-push hooks / 훅
 
-## Contribution Guide / 기여 가이드
+- **Husky pre-commit** runs `lint-staged`:
+  - `*.{ts,tsx}` → `go run scripts/check-anti-patterns.go` + `prettier --write`
+  - `*.{js,jsx,json,md}` → `prettier --write`
+- **`npm run git:preflight`** — run before push; rejects WIP commits and enforces branch naming.
+- **`npm run verify`** — full gate (lint, typecheck, naming, wrangler sync, tests); run before opening a PR.
 
-1. **Read the docs / 문서를 먼저 읽어 주세요** — `CONTRIBUTING.md`, `ARCHITECTURE.md`, `CODE_STYLE.md`, and the per-app `AGENTS.md` files are authoritative.
-2. **Branch from an issue / 이슈에서 분기** — `02_issue-to-branch.yml` scaffolds a branch and PR when an issue is labeled appropriately.
-3. **Conventional commits / 컨벤셔널 커밋** — Required for `24_release-notes.yml` to group changes correctly.
-4. **Pass the gate / 품질 게이트 통과** — Locally: `npm run lint && npm run typecheck && npm run test && npm run format:check`. CI re-runs the same checks via `ci.yml`.
-5. **Address review-bot findings / 봇 리뷰 결과 반영** — `10_pr-review.yml` and `11_security-pr-review.yml` leave inline comments; address them or trigger `/fix` for `14_bot-auto-fix.yml`.
-6. **Auto-merge path / 자동 머지 경로** — Add the `auto-merge` label once approvals and checks are green; `13_pr-auto-merge.yml` takes over from there.
-7. **No force pushes to protected branches / 보호 브랜치에 강제 푸시 금지** — `npm run git:preflight` blocks them locally; CI rejects them.
+### Database / 데이터베이스
+
+```bash
+npm run db:generate          # Drizzle codegen after schema edits
+npx wrangler d1 migrations apply DB --local   # apply locally
+npx wrangler d1 migrations apply DB --remote  # apply to production
+```
+
+## Commands Reference / 명령어 레퍼런스
+
+| Command | Scope | Description |
+| --- | --- | --- |
+| `npm run dev` | root | Start all workspaces (api/admin/worker) via Turborepo |
+| `npm run build` | root | Full production build (`turbo run build`) + assemble `dist/` |
+| `npm run build:api` | root | Build `packages/types` + `apps/api` only |
+| `npm run build:static` | root | Assemble static-export SPAs into `dist/` and `dist/admin/` |
+| `npm run build:one-worker` | root | Alias for `build:api` (deploy only the Worker) |
+| `npm run deploy:api` | root | **Disabled by design.** Manual deploys are rejected; deploys are Git-ref driven via CI on `master`. |
+| `npm run lint` | root | Run lint across all workspaces |
+| `npm run lint:naming` | root | Enforce file/folder naming conventions (`scripts/lint-naming.js`) |
+| `npm run typecheck` | root | TypeScript type-check across all workspaces |
+| `npm run test` | root | Run unit tests across all workspaces |
+| `npm run test:coverage` | root | Run unit tests with coverage |
+| `npm run e2e` | root | Playwright E2E (secrets injected via 1Password CLI) |
+| `npm run e2e:headed` | root | Playwright in headed mode |
+| `npm run e2e:ui` | root | Playwright in UI mode |
+| `npm run format` | root | Prettier write across `**/*.{ts,tsx,js,jsx,json,md}` |
+| `npm run format:check` | root | Prettier check (CI-safe) |
+| `npm run check:wrangler-sync` | root | Verify root `wrangler.toml` is in sync with workspace configs |
+| `npm run git:preflight` | root | Branch / WIP / commit-message guard (Go) |
+| `npm run verify` | root | Full pre-push gate (Go) |
+| `npm run clean` | root | Clean Turbo outputs and `node_modules` |
+| `npm run db:generate` | `apps/api` | Drizzle codegen |
+
+## Contributing / 기여 가이드
+
+### Workflow / 작업 흐름
+
+1. Pick or open an issue. `02_issue-to-branch.yml` can scaffold a branch + draft PR from a labeled issue.
+2. Branch off `master`. Naming convention is enforced by `scripts/lint-naming.js` and `scripts/git-preflight.go`.
+3. Develop locally. The dev loop is `npm run dev` (api + admin + worker) with hot reload.
+4. Before pushing, run:
+   ```bash
+   npm run lint
+   npm run typecheck
+   npm run check:wrangler-sync
+   npm run verify
+   ```
+5. Push. `01_branch-to-pr.yml` converts the push into a draft PR. Husky's pre-commit runs the Go anti-pattern check and Prettier on staged files.
+6. PR is reviewed by `10_pr-review.yml` (LLM review via `qodo-ai/pr-agent`) and `11_security-pr-review.yml` (security pass). Bot suggestions are applied by `14_bot-auto-fix.yml` as follow-up commits on the same branch.
+7. Add the `auto-merge` label once reviews and CI are green. `13_pr-auto-merge.yml` will merge once all required checks pass. `12_dependabot-auto-merge.yml` handles Dependabot PRs separately.
+8. After merge, `15_merged-pr-cleanup.yml` deletes the source branch.
+
+### Coding standards / 코딩 표준
+
+- **Conventions** — see `CODE_STYLE.md` and per-module `AGENTS.md` files (60 of them across the codebase).
+- **Types** — extend the shared DTOs/enums in `packages/types` rather than duplicating types in apps.
+- **UI** — reuse components from `packages/ui` (shadcn/ui + Tailwind v4 theme tokens) before adding app-local components.
+- **API** — every route module in `apps/api/src/routes/` has a matching Zod schema in `src/validators/`. Never accept unvalidated input at the route boundary.
+- **Migrations** — Drizzle schema changes require a new SQL file in `apps/api/migrations/` and a regenerated client (`npm run db:generate`).
+- **i18n** — UI strings live in `packages/types` translation data; never hard-code user-facing copy in components.
+
+### Release process / 릴리스 프로세스
+
+- `24_release-notes.yml` and `25_release-publish.yml` run on tag push. They generate categorized release notes from PRs/commits, then build and publish the Worker + SPA artifacts.
+- After publish, `29_downstream-health-check.yml` smoke-tests the deployed Worker against FAS (via Hyperdrive) and the push provider.
+
+### Operational guardrails / 운영 가드
+
+- `37_ci-failure-issues.yml` opens a triage issue when any required CI workflow fails on `master`.
+- `60_ci-auto-heal.yml` attempts deterministic auto-heal (cache purge, retry, lock reset) before a human is paged.
+- `91_issue-classification.yml` labels, projects, and suggests assignees for new issues so the backlog stays organized.
+- For the on-prem LLM stack, the home gateway runs on `&lt;homelab-host&gt;:8317` (public alias `https://cliproxy.jclee.me/v1`) and is consumed by the review workflows above.
 
 ## License / 라이선스
 
-MIT — see [`LICENSE`](./LICENSE).
+MIT — see `LICENSE`.
