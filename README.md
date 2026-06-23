@@ -31,294 +31,259 @@ SafetyWallet은 다음과 같이 구성됩니다.
 ## Key Features / 주요 기능
 
 - **Hazard reporting** with image / video attachments uploaded to R2.
-- **Attendance check-in / check-out** optimized for low-bandwidth on-site usage.
-- **Safety-point incentives** issued to workers, with consumption and history tracking.
-- **Admin dashboard** for site managers to review reports, approve points, and manage rosters.
-- **Offline-tolerant PWA** with a service worker and a TWA-installed Android shell.
-- **Push notifications** delivered through a queue-driven pipeline (Primary + DLQ) for retry safety.
-- **Rate limiting** via `RateLimiter` Durable Object to protect public endpoints.
-- **Internationalization** with Korean (`ko`) as the primary field-facing locale.
+- **Attendance check-in / check-out** optimized for low-bandwidth on-site use.
+- **Safety points** incentive ledger with accrual rules and redemption flows.
+- **Admin dashboard** for site managers, including member management and report review.
+- **Push notifications** delivered through a R2 + Queues + DLQ pipeline.
+- **Rate limiting** and **scheduled jobs** powered by Cloudflare Durable Objects.
+- **Android installability** via TWA so workers can install the PWA from the Play Store or via APK.
+- **Multilingual UI** (English / Korean) with locale-aware formatting.
+- **E2E coverage** with Playwright, and **unit / integration coverage** with Vitest.
 
-## 아키텍처 / Architecture
+- **R2 업로드** 기반의 이미지 / 동영상 첨부 기능을 갖춘 **위험 요인 신고**.
+- **저대역 현장 환경**에 최적화된 **출퇴근 체크인 / 체크아웃**.
+- 적립 규칙과 사용 흐름을 갖춘 **안전 포인트** 인센티브 원장.
+- **관리자 대시보드** — 현장 관리자용 멤버 관리 및 신고 검토.
+- R2 + Queues + DLQ 파이프라인을 통한 **푸시 알림** 전달.
+- Cloudflare Durable Objects 기반의 **레이트 리미팅** 및 **스케줄 작업**.
+- **TWA** 기반의 Android 설치성 — Play Store 또는 APK로 설치 가능.
+- **다국어 UI**(영어 / 한국어) 및 로케일 인지 포맷.
+- Playwright 기반 **E2E**, Vitest 기반 **단위 / 통합** 테스트.
 
-The system runs entirely on the Cloudflare edge. Static assets, the Hono API, scheduled jobs, storage, and queues all live inside a single Worker deployment. Hostname routing decides whether an incoming request is served as the worker PWA, the admin dashboard, or an API call.
+## Repository Layout / 저장소 구조
+
+```
+.
+├── AGENTS.md                # AI agent operating manual
+├── ARCHITECTURE.md          # Detailed architecture decisions
+├── CODE_STYLE.md            # Language and formatting conventions
+├── CONTRIBUTING.md          # Contribution guidelines
+├── LICENSE
+├── README.md
+├── package.json             # Root monorepo scripts & workspaces
+├── package-lock.json
+├── turbo.json               # Turborepo pipeline configuration
+├── wrangler.toml            # Cloudflare Worker configuration
+├── playwright.config.ts     # Playwright E2E configuration
+├── vitest.config.ts         # Vitest configuration
+└── apps/
+    └── worker/              # Next.js 15 + Cloudflare Worker host
+        ├── AGENTS.md
+        ├── I18N_IMPLEMENTATION.md
+        ├── next.config.mjs
+        ├── package.json
+        ├── tailwind.config.js
+        ├── postcss.config.cjs
+        ├── tsconfig.json
+        ├── vitest.config.ts
+        ├── android/         # TWA Android wrapper
+        │   ├── build.gradle
+        │   ├── settings.gradle
+        │   ├── twa-manifest.json
+        │   ├── store_icon.png
+        │   ├── app/         # Native shell
+        │   └── gradle/
+        └── src/
+            └── app/         # PWA routes (layout, page, error, styles)
+```
+
+## Architecture / 아키텍처
 
 ```mermaid
-flowchart TB
-    subgraph Clients["Clients / 클라이언트"]
-        Mobile["Worker PWA<br/>(Next.js 15, static export)"]
-        Admin["Admin Dashboard<br/>(Next.js 15, static export)"]
-        TWA["Android TWA<br/>(Trusted Web Activity shell)"]
+flowchart LR
+    subgraph Client["Client / 클라이언트"]
+        TWA["Android TWA Shell<br/>(apps/worker/android)"]
+        PWA["Worker PWA<br/>(Next.js 15 static export)"]
+        Admin["Admin Dashboard<br/>(Next.js 15 static export)"]
     end
 
     subgraph Edge["Cloudflare Edge / 엣지"]
         Worker["Cloudflare Worker<br/>(Hono router, hostname routing)"]
-        DO["Durable Objects<br/>RateLimiter / JobScheduler"]
-        D1[("D1 SQLite<br/>(Drizzle ORM schema)")]
-        R2[("R2 Object Storage<br/>(media + exports)")]
-        Q1["Queues: primary<br/>(notifications)"]
-        Q2["Queues: DLQ<br/>(dead-letter retry)"]
+        D1[("D1<br/>SQLite")]
+        R2[("R2<br/>Object Storage")]
+        QMain["Queues<br/>Primary"]
+        QDLQ["Queues<br/>DLQ"]
+        DO1["Durable Object<br/>RateLimiter"]
+        DO2["Durable Object<br/>JobScheduler"]
     end
 
-    subgraph Dev["Local Tooling / 로컬 도구"]
-        Turbo["Turborepo<br/>(task orchestration)"]
-        Vitest["Vitest<br/>(unit tests)"]
-        Playwright["Playwright<br/>(E2E with 1Password CLI)"]
-        GoTools["Go scripts<br/>(preflight, naming, anti-pattern)"]
+    subgraph Tooling["Repo Tooling / 도구"]
+        Go["Go scripts<br/>(lint, naming,<br/>anti-patterns, preflight)"]
+        Turbo["Turborepo<br/>+ npm workspaces"]
+        PW["Playwright E2E"]
+        VT["Vitest"]
     end
 
-    Mobile --> Worker
-    TWA --> Worker
-    Admin --> Worker
-    Worker --> DO
+    TWA --> PWA
+    Worker -->|"static / worker host"| PWA
+    Worker -->|"admin host"| Admin
     Worker --> D1
     Worker --> R2
-    Worker --> Q1
-    Q1 --> Q2
+    Worker --> QMain
+    QMain -->|"on failure"| QDLQ
+    Worker --> DO1
+    Worker --> DO2
     Turbo --> Worker
-    GoTools --> Worker
-    Vitest --> Worker
-    Playwright --> Worker
+    Go -.->|"enforce on commit/push"| Repo["Working tree"]
+    PW --> Worker
+    VT --> Worker
 ```
 
-### Request routing / 요청 라우팅
+### Component notes / 구성 요소 설명
 
-- The Worker inspects the incoming `Host` header.
-- The *worker PWA* host is served from `apps/worker/out` (Next.js static export).
-- The *admin* host is served from `apps/admin/out` mounted under `/admin`.
-- All other paths are forwarded to the Hono API.
-- API mutations that fan out work enqueue messages on the primary queue; poison messages land in the DLQ for replay.
-
-## Tech Stack / 기술 스택
-
-| Layer / 계층 | Technology / 기술 |
-| --- | --- |
-| Edge runtime / 엣지 런타임 | Cloudflare Workers |
-| API framework / API 프레임워크 | Hono |
-| Database / 데이터베이스 | Cloudflare D1 (SQLite) |
-| ORM / ORM | Drizzle |
-| Storage / 저장소 | Cloudflare R2 |
-| Queues / 큐 | Cloudflare Queues (Primary + DLQ) |
-| Coordination / 조정 | Cloudflare Durable Objects |
-| Frontend / 프런트엔드 | Next.js 15 (static export) |
-| Styling / 스타일링 | Tailwind CSS, PostCSS |
-| Android shell / Android 셸 | Trusted Web Activity (Bubblewrap) |
-| Monorepo / 모노레포 | Turborepo + npm workspaces |
-| Unit tests / 단위 테스트 | Vitest |
-| E2E tests / E2E 테스트 | Playwright (run via `op` / 1Password CLI) |
-| Git hooks / Git 훅 | Husky + lint-staged |
-| Tooling / 도구 | Go (preflight, anti-pattern, naming checks) |
-
-## Repository Structure / 저장소 구조
-
-```text
-.
-├── AGENTS.md                 # Agent / contributor behavior contract
-├── ARCHITECTURE.md           # Detailed architecture notes
-├── CODE_STYLE.md             # TypeScript and naming conventions
-├── CONTRIBUTING.md           # Contribution workflow
-├── LICENSE                   # Project license
-├── README.md                 # This document
-├── package.json              # Root workspace + scripts
-├── package-lock.json
-├── turbo.json                # Turborepo pipeline
-├── vitest.config.ts          # Root Vitest config
-├── playwright.config.ts      # Playwright E2E config
-├── wrangler.toml             # Cloudflare Worker binding config
-└── apps/
-    └── worker/               # Worker PWA (Next.js 15, static export)
-        ├── AGENTS.md
-        ├── I18N_IMPLEMENTATION.md
-        ├── next.config.mjs
-        ├── next-env.d.ts
-        ├── package.json
-        ├── postcss.config.cjs
-        ├── tailwind.config.js
-        ├── tsconfig.json
-        ├── vitest.config.ts
-        ├── src/
-        │   └── app/          # App router entry, global CSS, error boundary
-        │       ├── AGENTS.md
-        │       ├── error.tsx
-        │       ├── globals.css
-        │       ├── layout.tsx
-        │       └── page.tsx
-        └── android/          # TWA shell (Bubblewrap-generated Gradle project)
-            ├── build.gradle
-            ├── gradle.properties
-            ├── gradlew / gradlew.bat
-            ├── settings.gradle
-            ├── twa-manifest.json
-            ├── manifest-checksum.txt
-            ├── store_icon.png
-            ├── app/
-            │   ├── build.gradle
-            │   └── src/main/
-            │       ├── AndroidManifest.xml
-            │       ├── java/me/jclee/safetywallet/twa/
-            │       │   ├── Application.java
-            │       │   ├── DelegationService.java
-            │       │   └── LauncherActivity.java
-            │       └── res/  # icons, splash, manifest, strings (i18n)
-            └── gradle/wrapper/
-```
-
-> The `apps/worker/src/app/` tree shown above is the portion of the worker PWA visible in this snapshot. Additional routes, components, and libs are expected under `apps/worker/src/`.
->
-> The root `package.json` declares `apps/*` and `packages/*` workspaces. Other workspaces (for example `apps/api` and `packages/types` referenced by `build:api`) are not enumerated in this snapshot and are documented in their own directories.
+- **Cloudflare Worker** — single deployable that handles Hono API requests and routes static assets to the matching Next.js export (`/` for the worker PWA, `/admin` for the dashboard).
+- **D1 + Drizzle** — typed schema-first persistence for users, sites, reports, attendance, and points ledger.
+- **R2** — media bucket for hazard-report attachments (images, video clips, audio notes).
+- **Queues** — decouple notification fan-out from the request path; failed jobs are routed to a DLQ for inspection.
+- **Durable Objects** — `RateLimiter` provides per-actor fairness; `JobScheduler` runs cron-style jobs that drive accruals and reminders.
+- **TWA** — `apps/worker/android` is a Bubblewrap-style wrapper with its own `Application`, `LauncherActivity`, and `DelegationService`, validating the PWA via DigitalAssetLinks.
+- **Go tooling** — fast, dependency-free scripts under `scripts/` that integrate with `lint-staged` and Husky.
 
 ## Quick Start / 빠른 시작
 
-### Prerequisites / 사전 요구 사항
+### Prerequisites / 사전 준비물
 
-- **Node.js** `>= 20.0.0` (engines-pinned in `package.json`).
-- **npm** `10.8.2` (declared as `packageManager`; use Corepack to enforce).
-- **Go** `>= 1.22` for the dev-tooling scripts.
-- **Wrangler** (`npm i -g wrangler`) for local Worker emulation and remote bindings.
-- **1Password CLI** (`op`) — required for E2E test secrets (`op run --env-file=.env.e2e`).
-- **Java 17 + Android SDK** — only required if you build the TWA Android shell.
+- **Node.js** ≥ 20.0.0
+- **npm** 10.8.2 (the repo pins a package manager version)
+- **Go** ≥ 1.22 (only required for the tooling scripts under `scripts/`)
+- A Cloudflare account with D1, R2, and Queues enabled (for full-stack local emulation with `wrangler dev`)
 
 ### Install / 설치
 
 ```bash
-git clone <repository-url> safetywallet
-cd safetywallet
 npm install
-corepack enable
 ```
 
-### Run the dev server / 개발 서버 실행
+### Build everything / 전체 빌드
+
+```bash
+npm run build
+```
+
+This invokes Turborepo to build every workspace and then assembles a deployable `dist/` directory containing both PWA bundles and the Worker entrypoint.
+
+### Run the API only / API만 실행
+
+```bash
+npm run build:api
+```
+
+### Start local dev (all workspaces) / 로컬 개발
 
 ```bash
 npm run dev
 ```
 
-Turborepo fans out `dev` to every workspace, starting the Hono Worker, the worker PWA, and the admin dashboard in parallel.
-
-### Run a single workspace / 단일 워크스페이스 실행
+### Run unit / integration tests / 단위·통합 테스트
 
 ```bash
-npx turbo run dev --filter=apps/worker
+npm run test
+```
+
+### Run E2E tests (Playwright) / E2E 테스트
+
+```bash
+# secrets are loaded from .env.e2e via 1Password CLI
+op run --env-file=.env.e2e -- npx playwright test
+# interactive variants
+npm run e2e:headed
+npm run e2e:ui
 ```
 
 ## Configuration / 설정
 
-| File / 파일 | Purpose / 용도 |
-| --- | --- |
-| `wrangler.toml` | Cloudflare bindings: D1 database id, R2 bucket name, queue names, Durable Object class names, environment vars. |
-| `apps/worker/next.config.mjs` | Next.js static-export options and image domains. |
-| `apps/worker/tailwind.config.js` | Tailwind theme tokens for the worker PWA. |
-| `apps/worker/postcss.config.cjs` | PostCSS pipeline (Tailwind + autoprefixer). |
-| `turbo.json` | Pipeline task graph for `build`, `dev`, `lint`, `test`, `typecheck`, `clean`. |
-| `vitest.config.ts` | Root Vitest configuration. |
-| `playwright.config.ts` | Playwright projects, base URL, reporter. |
-| `.env.e2e` | Local-only E2E secrets, injected via `op run --env-file`. |
+### Root-level knobs / 루트 설정
 
-> Never commit `.env*` files. The CI pipeline consumes secrets through the 1Password CLI reference, mirroring local development.
+| Item | File | Purpose |
+| --- | --- | --- |
+| Workspaces | `package.json` | Declares `apps/*` and `packages/*` |
+| Pipeline | `turbo.json` | Task graph and caching for `build`, `dev`, `test`, `lint`, `typecheck` |
+| Cloudflare | `wrangler.toml` | Bindings for D1, R2, Queues, Durable Objects, and per-environment vars |
+| E2E | `playwright.config.ts` | Browser matrix and reporter config |
+| Unit / Integration | `vitest.config.ts` | Test discovery, coverage |
+
+### Per-workspace configs / 워크스페이스별 설정
+
+- `apps/worker/next.config.mjs` — static export settings and `output: 'export'`.
+- `apps/worker/tailwind.config.js` — design tokens for both frontends.
+- `apps/worker/postcss.config.cjs` — Tailwind / autoprefixer pipeline.
+- `apps/worker/android/` — Gradle project for the TWA shell.
+- `apps/worker/src/app/` — App Router pages, global styles, and error boundary.
+
+### Environment / 환경 변수
+
+E2E runs use 1Password CLI to inject secrets from `.env.e2e`. Worker runtime secrets are configured in `wrangler.toml` per environment (e.g. `vars`, `[[d1_databases]]`, `[[r2_buckets]]`, `[[queues.producers]]`).
 
 ## Commands Reference / 명령어 레퍼런스
 
-| Command / 명령어 | Description / 설명 |
+| Script | Description |
 | --- | --- |
-| `npm run dev` | Start all workspaces in dev mode via Turborepo. |
-| `npm run build` | Build every workspace, then assemble `dist/` with both static exports. |
-| `npm run build:api` | Build only `packages/types` and `apps/api`. |
-| `npm run build:static` | Rebuild `dist/` from the `apps/*/out` folders. |
-| `npm run build:one-worker` | Alias for `build:api` when iterating on a single worker. |
-| `npm run lint` | Lint every workspace. |
-| `npm run lint:naming` | Run the project naming-convention checker. |
-| `npm run typecheck` | Run TypeScript checks across the monorepo. |
-| `npm run test` | Run Vitest unit tests in every workspace. |
-| `npm run test:coverage` | Run Vitest with coverage collection. |
-| `npm run check:wrangler-sync` | Verify that `wrangler.toml` matches the bindings actually referenced in code. |
-| `npm run git:preflight` | Local pre-push invariant check (Go). |
-| `npm run verify` | Aggregate verification (Go). |
-| `npm run format` / `npm run format:check` | Prettier write / verify. |
-| `npm run db:generate` | Generate Drizzle migrations for `apps/api`. |
-| `npm run clean` | Remove build artifacts and `node_modules`. |
-| `npm run e2e` | Run Playwright with secrets injected from 1Password. |
-| `npm run e2e:headed` / `npm run e2e:ui` | Headed and UI-driven Playwright runs. |
+| `npm run build` | Build all workspaces and assemble `dist/` |
+| `npm run build:api` | Build types and the API workspace only |
+| `npm run build:static` | Compose the static PWA bundles into `dist/` |
+| `npm run build:one-worker` | Alias for `build:api` |
+| `npm run dev` | Run all workspaces in dev mode via Turborepo |
+| `npm run lint` | Lint all workspaces |
+| `npm run lint:naming` | Run the naming-convention checker |
+| `npm run typecheck` | TypeScript checks across the monorepo |
+| `npm run test` | Run unit / integration tests |
+| `npm run test:coverage` | Run tests with coverage reports |
+| `npm run e2e` | Playwright E2E (requires 1Password CLI) |
+| `npm run e2e:headed` | Playwright in headed mode |
+| `npm run e2e:ui` | Playwright with the interactive UI |
+| `npm run check:wrangler-sync` | Verify `wrangler.toml` matches bindings in code |
+| `npm run git:preflight` | Run pre-push invariants from Go |
+| `npm run verify` | Aggregate verification (build + lint + typecheck + tests) |
+| `npm run format` | Prettier write across the repo |
+| `npm run format:check` | Prettier check (CI-friendly) |
+| `npm run db:generate` | Generate Drizzle schema artifacts |
+| `npm run clean` | Remove all build artifacts and `node_modules` |
 
-> Manual API deploys are intentionally disabled. `npm run deploy:api` exits non-zero with a notice — production deploys are Git-ref driven via CI on `master`.
+> The `deploy:api` script is intentionally disabled; production deploys are Git-ref driven through CI on the `master` branch.
 
-## Local Development / 로컬 개발
+## Local Development / 로컬 개발 워크플로
 
-### Worker API / Worker API
+1. **Install** dependencies once at the root.
+2. **Pick a workspace** — for the PWA, work under `apps/worker/src/app/`; for the TWA, work under `apps/worker/android/`.
+3. **Run dev mode** with `npm run dev` to start Turborepo's parallel watchers.
+4. **Lint before commit** — Husky hooks invoke Go-based anti-pattern and preflight scripts via `lint-staged`.
+5. **Typecheck** with `npm run typecheck` to catch issues across workspaces.
+6. **Run focused tests** with `vitest` from the workspace you're iterating in.
+7. **Run E2E** before opening a PR; the Playwright config is wired to load `.env.e2e` via 1Password.
 
-```bash
-npx turbo run dev --filter=apps/api
-# In another terminal
-npx wrangler dev --local
-```
+### TWA development / TWA 개발
 
-`wrangler dev --local` boots the full Worker locally with D1, R2, Queues, and Durable Objects emulated.
-
-### Worker PWA / 작업자 PWA
-
-```bash
-npx turbo run dev --filter=apps/worker
-```
-
-The Next.js dev server runs on a local port. Static export is produced by `npm run build` into `apps/worker/out/`.
-
-### Admin dashboard / 관리자 대시보드
-
-The admin frontend is built and exported the same way (`apps/admin/out/`) and is served by the Worker at `/admin` once `npm run build:static` has assembled `dist/`.
-
-### Android TWA / Android TWA
-
-```bash
-cd apps/worker/android
-./gradlew assembleRelease
-```
-
-The generated APK is a Bubblewrap TWA shell that points at the deployed worker PWA. The `me.jclee.safetywallet.twa` Java sources wire up `Application`, `LauncherActivity`, and the `DelegationService` required for Play Billing and digital-asset link verification.
-
-### Git hooks / Git 훅
-
-Husky is wired via `npm run prepare`. `lint-staged` runs the Go anti-pattern check and Prettier on staged files before commit. `git:preflight` is intended to be run before push.
+- The Android project is a standard Gradle build: `cd apps/worker/android && ./gradlew assembleDebug`.
+- `twa-manifest.json` and `web_app_manifest.json` must stay in sync with the PWA; `check:wrangler-sync` and related Go scripts help enforce that.
+- Asset files live under `apps/worker/android/app/src/main/res/`.
 
 ## Testing / 테스트
 
-- **Unit tests** — Vitest, configured at the root (`vitest.config.ts`) and per workspace. Run with `npm run test` or scope with `npx turbo run test --filter=apps/worker`.
-- **End-to-end tests** — Playwright (`playwright.config.ts`). Secrets are pulled from 1Password via `op run --env-file=.env.e2e -- npx playwright test`. Use `npm run e2e`, `npm run e2e:headed`, or `npm run e2e:ui`.
-- **Type checking** — `npm run typecheck` runs `tsc --noEmit` across workspaces.
-- **Coverage** — `npm run test:coverage` reports per-workspace coverage.
-- **Static / invariant checks** — `npm run check:wrangler-sync`, `npm run lint:naming`, `npm run verify`.
-
-## Internationalization / 국제화
-
-The worker PWA ships with Korean (`ko`) as the primary field-facing locale, and Android strings live in `apps/worker/android/app/src/main/res/values/strings.xml`. See `apps/worker/I18N_IMPLEMENTATION.md` for the full strategy (locale routing, message catalog, and Android resource parity).
-
-## Build & Deploy / 빌드 및 배포
-
-1. `npm run build` — every workspace builds, then `dist/` is assembled:
-
-   ```text
-   dist/
-   ├── ...      # apps/worker/out
-   └── admin/
-       └── ...  # apps/admin/out
-   ```
-
-2. CI runs `wrangler deploy` against the assembled Worker.
-3. The TWA APK is built and signed in a separate pipeline, then published to the Play Store as `me.jclee.safetywallet.twa`.
+- **Vitest** — unit and integration tests per workspace, runnable with `npm run test` or scoped to a single workspace.
+- **Playwright** — end-to-end browser tests covering the worker PWA and admin dashboard. Use `npm run e2e:ui` when debugging.
+- **Go scripts** — treat these as additional test-class invariants: naming, anti-patterns, preflight, and wrangler sync checks all run on commit / push and in CI.
 
 ## Contribution Guide / 기여 가이드
 
-1. Read `AGENTS.md`, `ARCHITECTURE.md`, `CODE_STYLE.md`, and `CONTRIBUTING.md` at the repo root before opening a pull request.
-2. Create a feature branch: `git checkout -b feat/<short-name>`.
-3. Make changes; ensure `npm run lint`, `npm run typecheck`, and `npm run test` pass locally.
-4. For UI changes, add or update Playwright coverage.
-5. Husky will run `lint-staged` and the Go anti-pattern check on commit. If a hook blocks, fix the issue rather than bypassing it.
-6. Push the branch and open a pull request. CI runs the same `verify` script locally you can run with `npm run verify`.
+1. Read `CODE_STYLE.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md` before opening a PR.
+2. Branch from `master`; keep commits scoped and conventional.
+3. Run the full verification locally:
+
+   ```bash
+   npm run verify
+   ```
+
+4. Make sure your branch passes the E2E suite against a clean environment.
+5. Open a PR that describes the change, screenshots for UI changes, and links to the relevant issue.
+6. CI will run the Turborepo pipeline, Playwright E2E, and Go-based preflight checks.
+
+## Operational Notes / 운영 메모
+
+- **Manual deploys are disabled** by design — the `deploy:api` script exits with a clear error. Releases flow through CI on `master`.
+- **Static bundle assembly** (`build:static`) overwrites `dist/` and is idempotent; safe to run repeatedly.
+- **Drizzle migrations** are produced by `db:generate` in the API workspace; never edit generated SQL by hand.
+- **Hostnames**: the Worker uses hostname-based routing to split traffic between the worker PWA and the admin dashboard. Update `wrangler.toml` routes when adding a new public hostname.
 
 ## License / 라이선스
 
-This repository is distributed under the terms described in the [`LICENSE`](./LICENSE) file. The `Private` badge above reflects the project's distribution policy; review the file for the exact terms.
-
-## Acknowledgments / 감사의 말
-
-- The Cloudflare developer platform (Workers, D1, R2, Queues, Durable Objects).
-- The Hono, Drizzle, and Next.js maintainers.
-- The Bubblewrap project for the TWA scaffolding.
+This repository is distributed under a private license. See `LICENSE` for the full terms. / 본 저장소는 비공개 라이선스로 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참고하세요.
