@@ -8,6 +8,7 @@
 ![Node](https://img.shields.io/badge/node-%E2%89%A520.0.0-green)
 ![Package%20Manager](https://img.shields.io/badge/npm-10.8.2-CB3837)
 ![Turborepo](https://img.shields.io/badge/turborepo-monorepo-FF1E56)
+![AI%20Review](https://img.shields.io/badge/AI_Review-pr--agent-8A2BE2)
 ![License](https://img.shields.io/badge/license-Private-lightgrey)
 
 ## Overview / 개요
@@ -32,227 +33,98 @@ SafetyWallet은 다음과 같이 구성됩니다:
 
 - **Hazard reporting** with image / video attachments uploaded to R2.
 - **Attendance logging** with KST-timezone calendar boundaries.
-- **Safety points** earned per approved report, settled by site admins.
-- **Education module** for safety training content and quizzes.
-- **Notifications** delivered via a queue-backed pipeline with a dead-letter queue.
-- **Triple-layer auth** (JWT → KST date → KV cache → D1 fallback) with role-based and site-scoped permissions.
-- **Internationalization** for `ko`, `en`, `vi`, `zh` through a custom runtime.
-- **TWA distribution** that ships the PWA as a native-installable Android app.
-- **Rate limiting** and **cron scheduling** owned by Durable Objects.
-- **PR-Agent** structural and security review on every pull request.
+- **Safety point** incentives awarded by site admins after verified reports and training completion.
+- **Education & training** module with course delivery and completion tracking.
+- **Posts & votes** for on-site announcements and prioritization.
+- **Reviews & settlements** workflow for compliance sign-off.
+- **FAS integration** through Hyperdrive to the external employee master database.
+- **Multi-language UI** (Korean, English, Vietnamese, Chinese) via a custom i18n runtime in the worker PWA.
+- **Role-based access control** with four roles (`WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`) and field-level flags (`canAwardPoints`, `canReview`, `canExportData`).
+- **Android TWA** distribution so the worker PWA installs from the Play Store as a native app.
+- **Scheduled automation** with 10 cron jobs driving attendance rollups, point calculation, and notification dispatch.
+- **End-to-end testing** with Playwright across 6 projects (auth setup, admin, worker flows).
+
+- **R2 업로드 기반의 Hazard 보고**(이미지 / 동영상 첨부)
+- **KST 시간대** 경계로 기록되는 출퇴근 관리
+- 사고 보고 및 교육 이수 검증 후 **사이트 관리자가 부여하는 안전 포인트 인센티브**
+- **교육 · 훈련** 모듈(코스 제공 및 이수 추적)
+- 현장 공지 및 우선순위 결정을 위한 **게시글 · 투표**
+- 컴플라이언스 결재를 위한 **리뷰 · 정산** 워크플로
+- **Hyperdrive** 기반 외부 임직원 마스터 DB(FAS) 연동
+- 작업자 PWA의 커스텀 i18n 런타임을 통한 **다국어 UI**(한국어 · 영어 · 베트남어 · 중국어)
+- 4단계 역할(`WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`)과 필드 단위 플래그 기반 **RBAC**
+- 작업자 PWA를 Play Store에서 네이티브 앱으로 설치할 수 있게 해주는 **Android TWA** 배포
+- 출퇴근 집계 · 포인트 산정 · 알림 발송을 처리하는 **10개의 스케줄 작업**
+- 인증 · 관리자 · 작업자 플로우를 다루는 **Playwright E2E 테스트 6개 프로젝트**
 
 ## Architecture / 아키텍처
 
-The platform runs as a single Cloudflare Worker that fans out to its bindings and to the two statically-exported SPAs. Field workers reach the PWA directly (or through the TWA shell on Android), while site admins reach the dashboard over a separate hostname. Cron jobs are scheduled by `JobScheduler` Durable Objects and write into the notification queue, which feeds a downstream delivery consumer; failed messages land in the DLQ.
-
 ```mermaid
 flowchart TB
-    Worker["Field Worker<br/>(Mobile Browser or TWA)"]
-    Admin["Site Admin<br/>(Desktop Browser)"]
+    subgraph Clients[Field & Admin Devices]
+        PWA[Worker PWA<br/>Next.js 15 static export]
+        TWA[Android TWA<br/>native wrapper]
+        Admin[Admin Dashboard<br/>Next.js 15 static export]
+    end
 
-    TWA["Android TWA Shell<br/>(Trusted Web Activity)"]
-    WorkerPWA["Next.js 15 Worker PWA<br/>(Static Export, ko / en / vi / zh)"]
-    AdminPWA["Next.js 15 Admin Dashboard<br/>(Static Export, port 3001)"]
+    subgraph Edge[Cloudflare Edge]
+        Worker[Cloudflare Worker<br/>Hono router + host routing]
+        Static[Workers Static Assets<br/>SPA bundles]
+    end
 
-    Edge["Cloudflare Edge<br/>(Single Worker, Hostname Routing)"]
-    Hono["Hono API<br/>(18 route modules + middleware)"]
-    Drizzle["Drizzle ORM<br/>(D1 SQLite driver)"]
+    subgraph Stateful[Stateful Services]
+        DO[Durable Objects<br/>RateLimiter + JobScheduler]
+        Cron[Cron Triggers<br/>10 scheduled jobs]
+    end
 
-    D1["D1 Database<br/>(34 tables, 31 migrations)"]
-    R2["R2 Bucket<br/>(Reports, attendance assets)"]
-    KV["KV Namespace<br/>(Auth cache, system status)"]
-    HD["FAS Hyperdrive<br/>(External employee DB)"]
+    subgraph Data[Data Plane]
+        D1[(D1<br/>34 tables via Drizzle)]
+        R2[(R2<br/>media + acetime)]
+        KV[(KV<br/>auth + config + status)]
+        HD[(Hyperdrive<br/>FAS connector)]
+        Q[Queues<br/>notify + DLQ]
+    end
 
-    DO["Durable Objects<br/>(RateLimiter, JobScheduler)"]
-    Cron["Scheduled Cron Jobs<br/>(10 jobs)"]
-    Queue["Queues<br/>(NOTIFICATION_QUEUE + DLQ)"]
+    External[FAS External DB<br/>employee master]
 
-    Worker --> TWA
-    TWA --> Edge
-    Admin --> Edge
-
-    Edge --> WorkerPWA
-    Edge --> AdminPWA
-    Edge --> Hono
-    Hono --> Drizzle
-    Drizzle --> D1
-    Hono --> R2
-    Hono --> KV
-    Hono --> HD
-
-    Cron --> DO
-    Hono --> DO
-    DO --> Queue
-    Queue --> R2
+    PWA --> Worker
+    TWA --> PWA
+    Admin --> Worker
+    Worker --> Static
+    Worker --> D1
+    Worker --> R2
+    Worker --> KV
+    Worker --> HD
+    Worker --> DO
+    DO --> Cron
+    Cron --> Q
+    Q --> R2
+    HD --> External
 ```
 
-The Worker statically serves the two SPAs (`apps/worker/out`, `apps/admin/out`) under `/` and `/admin` paths and exposes the JSON API on the same origin. Durable Objects own rate-limit state and the cron-driven job lifecycle. The notification queue is bound to a downstream delivery worker with a dead-letter queue for poison messages.
+### Bindings / 바인딩
+
+The single Cloudflare Worker declared in `wrangler.toml` is the source of truth for every binding.
+
+`wrangler.toml`에 선언된 단일 Cloudflare Worker가 모든 바인딩의 단일 진실 공급원입니다.
+
+- `DB` — D1 primary database (34 tables via Drizzle ORM).
+- `FAS_HYPERDRIVE` — Hyperdrive to the external FAS employee database.
+- `ASSETS` — Workers Static Assets for the worker and admin SPAs.
+- `R2` — User-uploaded images and videos.
+- `ACETIME_BUCKET` — R2 bucket for attendance-related assets.
+- `KV` — Auth cache, system status, and configuration.
+- `NOTIFICATION_QUEUE` / `NOTIFICATION_DLQ` — Notification delivery pipeline.
+- `RATE_LIMITER` — Durable Object for per-route rate limiting.
+- `JOB_SCHEDULER` — Durable Object that owns cron execution and back-off semantics.
+
+### Authentication / 인증
+
+- **JWT** issued at login with KST same-day midnight expiry, stored in a client-side Zustand store.
+- **Triple-layer validation**: JWT decode → KST date check → KV cache lookup → D1 fallback.
+- **Three-tier permissions**: role → site-specific membership → field-level flags.
+- **Client stores**: `safetywallet-auth` (worker PWA) and `safetywallet-admin-auth` (admin dashboard); 401s trigger a single-flight refresh through a mutex.
 
 ## jclee-bot Automation Surfaces / jclee-bot 자동화 영역
 
-`jclee-bot` owns every mutating surface of the repository: branches, pull requests, issues, releases, dependabot, and CI failure follow-ups. The GitHub Actions workflows in `.github/workflows/` are merely the implementation triggers that call into `jclee-bot`; they are not the source of truth for the automation policy.
-
-### Branch and PR lifecycle
-
-- **Branch → PR**: when a branch is pushed, `jclee-bot` opens a draft pull request, links it to its tracking issue, and applies the standard label set.
-- **Issue → branch**: when an issue is triaged, `jclee-bot` provisions a feature branch with a conventional name and seeds it with the issue body.
-- **PR review**: `jclee-bot` runs a structural review (PR-Agent by [qodo-ai/pr-agent](https://github.com/qodo-ai/pr-agent)) on every PR and posts the result as a comment.
-- **Security PR review**: `jclee-bot` augments the structural review with a security-focused pass for code that touches auth, secrets, D1, or R2.
-- **PR auto-merge**: `jclee-bot` merges approved, green, non-conflicting PRs without human intervention.
-- **Dependabot auto-merge**: `jclee-bot` merges Dependabot PRs that pass the full check matrix.
-- **Bot auto-fix**: when a check fails on a bot-owned PR, `jclee-bot` reopens it, applies a fix, and re-pushes.
-- **Merged PR cleanup**: `jclee-bot` deletes merged feature branches and closes the linked issue.
-
-### Issue and release lifecycle
-
-- **Issue backfill**: `jclee-bot` sweeps stale, unlabelled issues and applies the standard label taxonomy. New issues opened against this project are *jclee-bot에의해자동화됨* — labelled, triaged, and routed by the bot.
-- **CI failure issues**: when the CI matrix fails on `master`, `jclee-bot` opens an issue with the failing logs and assigns it to the workflow owner. CI-failure issues are *jclee-bot에의해자동화됨*.
-- **Downstream health check**: `jclee-bot` polls downstream services and opens an issue when health degrades; the issue is *jclee-bot에의해자동화됨*.
-- **Release notes**: `jclee-bot` aggregates merged PRs and commits into a release-note draft.
-- **Release publish**: `jclee-bot` tags the release, publishes the artifacts, and marks the tracking issue as done.
-
-All automations are reachable through the public dashboard at [bot.jclee.me](https://bot.jclee.me), and the public release artifacts are mirrored to [cliproxy.jclee.me](https://cliproxy.jclee.me).
-
-## Go Tools / Go 도구
-
-This repository does **not** ship any Go-based automation tools (Go automation tools in scope: **0**). The only Go presence is a small set of development-time utilities under `scripts/` that are invoked from `npm` scripts and from `lint-staged`:
-
-- `scripts/verify.go` — verifies repository invariants (Wrangler sync, lockfile freshness, workspace health).
-- `scripts/git-preflight.go` — runs before a push to refuse secrets, large files, and forbidden paths.
-- `scripts/check-anti-patterns.go` — scans staged TypeScript for anti-patterns the linter cannot express.
-- `scripts/lint-naming.js` (companion) — enforces file- and identifier-naming rules.
-
-These are Go *scripts*, not deployable binaries; they have no release artifact and are not part of the `jclee-bot` automation surface.
-
-## Repository Layout / 저장소 구조
-
-The project is a Turborepo monorepo with three application workspaces and two shared packages. The top-level layout reflects the actual repository:
-
-```text
-.
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── CODE_STYLE.md
-├── CONTRIBUTING.md
-├── LICENSE
-├── README.md
-├── package.json
-├── package-lock.json
-├── playwright.config.ts
-├── turbo.json
-├── vitest.config.ts
-├── wrangler.toml
-├── apps/
-│   ├── api/                 # Cloudflare Worker API (Hono + Drizzle + D1)
-│   ├── admin/               # Next.js 15 admin dashboard (port 3001, static export)
-│   └── worker/              # Next.js 15 worker PWA (port 3000, static export)
-│       └── android/         # TWA wrapper (Gradle, manifest, app icon set, LauncherActivity)
-├── packages/
-│   ├── types/               # Shared TS types, enums, DTOs, i18n data
-│   └── ui/                  # Shared shadcn/ui + Tailwind v4 tokens
-├── docs/                    # PRD, requirements specs, ops runbooks
-├── scripts/                 # Go/JS tooling (verify, preflight, anti-patterns, naming)
-├── e2e/                     # Playwright E2E tests (auth setup, admin, worker flows)
-└── .github/workflows/       # CI/CD triggers that call into jclee-bot
-```
-
-## Quick Start / 빠른 시작
-
-```bash
-# Clone and install
-git clone <this-repo> safetywallet
-cd safetywallet
-npm install
-
-# Sign in to 1Password CLI for E2E secrets
-op signin
-
-# Start the local stack (Hono API + both Next.js frontends)
-npm run dev
-```
-
-The first run will:
-
-1. Build `packages/types` and `packages/ui` through the Turborepo pipeline.
-2. Boot the Hono API on its local Wrangler port.
-3. Boot the worker PWA on `http://localhost:3000` and the admin dashboard on `http://localhost:3001`.
-4. Open the worker PWA in your browser, or build the TWA under `apps/worker/android/` and sideload it on a device.
-
-## Local Development / 로컬 개발
-
-### Prerequisites / 사전 요구 사항
-
-- Node.js **>= 20.0.0** and npm **10.8.2** (the project pins `packageManager`).
-- Wrangler CLI (for `apps/api` local emulation and D1 migrations).
-- Go **>= 1.22** (for `scripts/*.go` invocations from `npm` scripts and `lint-staged`).
-- 1Password CLI (`op`) for Playwright E2E secrets.
-- Android Studio + JDK 17 (only for TWA builds under `apps/worker/android/`).
-
-### D1 migrations / D1 마이그레이션
-
-```bash
-# Generate a new migration from the Drizzle schema
-npm run db:generate --workspace=apps/api
-
-# Apply migrations to the local D1
-npx wrangler d1 migrations apply DB --local
-```
-
-### Cloudflare bindings
-
-The `wrangler.toml` at the repository root declares every binding the Worker expects in production:
-
-- `DB` (D1), `ASSETS` (Workers Static Assets), `R2` (reports), `ACETIME_BUCKET` (attendance assets), `KV` (auth cache), `FAS_HYPERDRIVE` (external employee DB), `NOTIFICATION_QUEUE` + `NOTIFICATION_DLQ`, and the `RATE_LIMITER` / `JobScheduler` Durable Objects.
-
-The same bindings must be present in any preview environment; the `npm run check:wrangler-sync` script enforces that `wrangler.toml` matches the source-of-truth schema.
-
-## Commands Reference / 명령어 레퍼런스
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Boot all workspaces (Hono API + worker PWA + admin dashboard). |
-| `npm run build` | Build every workspace, then assemble `dist/` for the Worker. |
-| `npm run build:api` | Build only the Hono API and shared types. |
-| `npm run build:static` | Compose the static export for both SPAs into `dist/`. |
-| `npm run lint` | Lint every workspace through Turborepo. |
-| `npm run lint:naming` | Run the naming-convention linter (`scripts/lint-naming.js`). |
-| `npm run typecheck` | TypeScript project references across the monorepo. |
-| `npm run test` | Vitest unit tests for every workspace. |
-| `npm run test:coverage` | Vitest with coverage. |
-| `npm run e2e` | Playwright E2E suite (requires `op signin` first). |
-| `npm run e2e:headed` / `npm run e2e:ui` | Headed / interactive Playwright runs. |
-| `npm run check:wrangler-sync` | Verify `wrangler.toml` matches the source of truth. |
-| `npm run git:preflight` | Run the Go-based pre-push guard. |
-| `npm run verify` | Run the Go-based repo-invariant verifier. |
-| `npm run db:generate` | Generate a Drizzle migration. |
-| `npm run format` / `npm run format:check` | Prettier write / check across the repo. |
-| `npm run clean` | Remove build outputs and `node_modules`. |
-| `npm run deploy:api` | Disabled by design — deploys are Git-ref driven via CI on `master`. |
-
-## Contribution Guide / 기여 가이드
-
-1. Read `CONTRIBUTING.md`, `CODE_STYLE.md`, and `ARCHITECTURE.md` before opening a PR.
-2. Read the relevant `AGENTS.md` for the area you are touching (60+ are scattered across the codebase).
-3. Pick or open an issue; `jclee-bot` will turn the issue into a feature branch.
-4. Make your change in the feature branch; commits must follow Conventional Commits.
-5. Run the local quality gate before pushing:
-
-   ```bash
-   npm run lint
-   npm run typecheck
-   npm run test
-   npm run check:wrangler-sync
-   npm run git:preflight
-   ```
-
-6. Push the branch; `jclee-bot` opens a draft PR and runs the PR-Agent review.
-7. After approval, `jclee-bot` performs the auto-merge and cleans up the branch.
-8. Issues and CI failures are *jclee-bot에의해자동화됨* — please do not hand-curate them.
-
-## License / 라이선스
-
-Proprietary. See [`LICENSE`](./LICENSE).
-
----
-
-_This README is generated by `gpt-5.5` (fallback: `minimax-m3` via the public [cliproxy.jclee.me](https://cliproxy.jclee.me) endpoint) and refreshed on every release by `jclee-bot`._
+Mutating GitHub automation in this repository is owned and operated by **jclee-bot**. The workflow YAML files in `.github/workflows/` are implementation triggers; the policy, identity, and merge authority live with the bot. Treat
