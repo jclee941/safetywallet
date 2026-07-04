@@ -29,7 +29,7 @@ const SendPushSchema = z.object({
     body: z.string().min(1).max(500),
     icon: z.string().optional(),
     badge: z.string().optional(),
-    data: z.record(z.unknown()).optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
     actions: z
       .array(z.object({ action: z.string(), title: z.string() }))
       .optional(),

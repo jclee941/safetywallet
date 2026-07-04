@@ -22,7 +22,7 @@ export const CreatePostSchema = z.object({
   isAnonymous: z.boolean().optional(),
   imageUrls: z.array(z.string()).optional(),
   imageHashes: z.array(z.string().nullable()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   clientMutationId: z.string().uuid().optional(),
 });
 

@@ -37,6 +37,7 @@ export const SubmitQuizAttemptRequestSchema = z.object({
   answers: z.union([
     z.array(z.union([z.number().int(), z.array(z.number().int()), z.string()])),
     z.record(
+      z.string(),
       z.union([z.number().int(), z.array(z.number().int()), z.string()]),
     ),
   ]),

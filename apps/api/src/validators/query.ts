@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+const uuidLikePattern =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const shortIdPattern = /^[a-z]+-\d+$/i;
+
+export const QueryIdSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .refine(
+    (value) => uuidLikePattern.test(value) || shortIdPattern.test(value),
+    "Invalid ID format",
+  );
+
 /**
  * Common pagination query parameters
  */
@@ -28,7 +41,7 @@ export type SiteMembersQuery = z.infer<typeof SiteMembersQuerySchema>;
  * Query schema for points balance/check endpoints
  */
 export const PointsSiteQuerySchema = z.object({
-  siteId: z.string().uuid("Invalid site ID format"),
+  siteId: QueryIdSchema,
 });
 
 export type PointsSiteQuery = z.infer<typeof PointsSiteQuerySchema>;

@@ -8,6 +8,7 @@ import { attendanceMiddleware } from "../../middleware/attendance";
 import { pointsLedger, sites, siteMemberships, users } from "../../db/schema";
 import { success, error } from "../../lib/response";
 import {
+  QueryIdSchema,
   PointsSiteQuerySchema,
   PointsLeaderboardQuerySchema,
 } from "../../validators/query";
@@ -105,10 +106,10 @@ app.get("/history", async (c) => {
   const { user } = c.get("auth");
 
   const querySchema = z.object({
-    siteId: z.string().uuid().optional(),
-    userId: z.string().uuid().optional(),
-    limit: z.coerce.number().min(0).max(100).default(50),
-    offset: z.coerce.number().min(0).default(0),
+    siteId: QueryIdSchema.optional(),
+    userId: QueryIdSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
   });
 
   const parsed = querySchema.safeParse(c.req.query());
