@@ -4,9 +4,6 @@ compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat_v2"]
 workers_dev = false
 
-[build]
-command = "npm run build"
-
 # Custom domain routes (requires Zone permissions in API token)
 routes = [
   { pattern = "safetywallet.jclee.me/*", zone_name = "jclee.me" },
