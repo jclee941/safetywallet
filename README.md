@@ -1,186 +1,362 @@
-# 안전지갑 (SafetyWallet)
+# SafetyWallet
 
-[![Status: Active](https://img.shields.io/badge/Status-Active-2ea44f)](#status)
-[![Node: >=20](https://img.shields.io/badge/Node-%E2%89%A520-339933)](package.json)
-[![Package Manager: npm 10.8.2](https://img.shields.io/badge/npm-10.8.2-CB3837)](package.json)
-[![Workers: Cloudflare](https://img.shields.io/badge/Deploy-Cloudflare_Workers-F38020)](wrangler.toml)
-[![Tests: Playwright + Vitest](https://img.shields.io/badge/Tests-Playwright_%2B_Vitest-6DA55F)](#testing)
+> 현장 근로자 안전 보고 PWA + 관리자 대시보드. Cloudflare Workers에서 단일 진실 공급원(Single Source of Truth)을 통해 API와 정적 프런트엔드를 제공합니다.
 
-현장 근로자가 모바일 PWA로 위험 요인을 신고하고, 출퇴근을 기록하고, 안전 포인트를 적립한다. 현장 관리자는 대시보드에서 신고 검토, 정산, 컴플라이언스를 처리한다. 단일 Cloudflare Worker가 Hono API와 정적 익스포트된 두 개의 Next.js 프런트엔드를 호스트 이름 라우팅으로 제공한다.
+[![Stack](https://img.shields.io/badge/stack-TypeScript%20%C2%B7%20Hono%20%C2%B7%20Drizzle-3178C6)]()
+[![Runtime](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020)]()
+[![Frontend](https://img.shields.io/badge/frontend-Next.js%2015-000000)]()
+[![DB](https://img.shields.io/badge/db-D1%20%2B%20Hyperdrive-FF6B35)]()
+[![Status](https://img.shields.io/badge/status-Production%20Ready-2EA043)]()
 
-Field workers use a mobile PWA to report hazards, log attendance, and earn safety points. Site admins manage reviews, settlements, and compliance via a dashboard. A single Cloudflare Worker serves the Hono API and two statically-exported Next.js frontends via hostname routing.
+## 한국어 요약
+
+SafetyWallet은 건설·산업 현장의 안전 관리를 위한 종단간 시스템입니다. 근로자는 모바일 PWA로 위험 요소를 신고하고, 출퇴근을 기록하며, 안전 포인트를 적립합니다. 현장 관리자는 웹 대시보드에서 신고 검토, 정산, 컴플라이언스를 처리합니다. 단일 Cloudflare Worker가 Hono API와 두 개의 Next.js 정적 익스포트(`apps/worker`, `apps/admin`)를 호스트명 라우팅으로 제공하여 운영 복잡도를 최소화합니다.
+
+## English Summary
+
+SafetyWallet is an end-to-end safety management system for construction and industrial sites. Field workers use a mobile PWA to report hazards, log attendance, and earn safety points. Site admins process reviews, settlements, and compliance from a web dashboard. A single Cloudflare Worker serves the Hono API and two statically exported Next.js frontends (`apps/worker`, `apps/admin`) via hostname routing, minimizing operational complexity.
 
 ## 빠른 상태 / Quick Status
 
-| 항목 | 값 | 비고 |
-| --- | --- | --- |
-| 버전 | `0.1.0` | `package.json` 루트 |
-| 노드 엔진 | `>=20.0.0` | `engines.node` |
-| 패키지 매니저 | `npm@10.8.2` | workspaces 사용 |
-| 백엔드 런타임 | Cloudflare Workers | `wrangler.toml` |
-| 데이터베이스 | D1 (SQLite, 34 tables) | Drizzle ORM |
-| 외부 DB | Hyperdrive → FAS | `FAS_HYPERDRIVE` 바인딩 |
-| 정적 자산 | Workers Static Assets | `ASSETS` 바인딩 |
-| 미디어 스토리지 | R2 (`R2`, `ACETIME_BUCKET`) | 이미지/영상 업로드 |
-| 인증 캐시 | KV | JWT/시스템 상태 |
-| 메시징 | Queue + DLQ | 알림 파이프라인 |
-| 속도 제한 | Durable Object | `RATE_LIMITER` |
-| 권한 모델 | 3단 (Role → Site → Flag) | `WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM` |
-| 지원 언어 | `ko`, `en`, `vi`, `zh` | 커스텀 i18n 런타임 |
-| 프런트엔드 빌드 | Next.js 15 static export | `apps/worker` (3000), `apps/admin` (3001) |
-| 모바일 패키지 | Android TWA (Trusted Web Activity) | `apps/worker/android` |
-| 테스트 | Vitest + Playwright (6 projects) | `playwright.config.ts` |
-| 배포 방식 | Git-ref 기반 CI | `master` 푸시 시 자동 |
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| Production readiness | Production-ready | Cloudflare Workers + D1 기반 |
+| Worker PWA | Active | Next.js 15, ko/en/vi/zh |
+| Admin Dashboard | Active | Next.js 15, 정적 익스포트 |
+| API | Active | Hono + Drizzle ORM |
+| Android (TWA) | Active | `apps/worker/android` |
+| E2E Tests | Active | Playwright 6 프로젝트 |
+| Manual deploy | Disabled | Git-ref 기반 CI 자동 배포 |
+| Node engine | `>=20.0.0` | npm `10.8.2` |
 
-## 운영 흐름 / Operational Flow
+## 흐름 요약 / Flow Summary
 
-1. 현장 근로자가 `worker` PWA에 로그인 → JWT 발급 (KST 자정 만료) → Zustand에 저장.
-2. 신고/출퇴근/교육 데이터가 `/api/*` 경로로 단일 Worker(Hono)에 도달.
-3. Worker는 Drizzle로 D1을 조회/기록하고, 업로드 미디어는 R2로 라우팅.
-4. 알림은 `NOTIFICATION_QUEUE`로 발행되고 실패 시 `NOTIFICATION_DLQ`로 분기.
-5. `apps/admin` 대시보드가 같은 Worker의 호스트 라우팅(`/admin/*`)을 통해 정적 자산으로 서빙.
-6. CI가 `master` Git ref에 반응해 마이그레이션 적용 후 Worker를 배포.
+1. 사용자가 PWA(또는 Android TWA)로 접근 → 호스트명 라우팅이 Worker 또는 Admin으로 분기.
+2. 클라이언트가 Zustand 저장소에 저장된 JWT로 인증, KST 자정 기준 만료 검증.
+3. Hono 라우트가 요청 처리 → Drizzle로 D1 조회 → 필요 시 Hyperdrive/FAS 연동.
+4. Cron 잡(10개) 및 Durable Object(`RateLimiter`, `JobScheduler`)로 부가 작업 수행.
+5. 알림은 `NOTIFICATION_QUEUE`/`NOTIFICATION_DLQ`로 분리 전송.
 
-운영자가 가장 자주 쓰는 명령/엔드포인트:
+## 목차 / Table of Contents
 
-- 로컬 통합 개발: `npm run dev`
-- 타입·린트·테스트·빌드 일괄 검증: `npm run verify` (Go 스크립트)
-- Worker만 빌드: `npm run build:one-worker`
-- Playwright E2E: `npm run e2e` (1Password CLI 기반 시크릿 주입)
-- 운영자 헬스체크 엔드포인트: `/api/system/status` (KV 캐시)
-- D1 마이그레이션: `npm run db:generate` + CI 자동 적용
+- [프로젝트 개요 / Overview](#프로젝트-개요--overview)
+- [주요 기능 / Features](#주요-기능--features)
+- [아키텍처 / Architecture](#아키텍처--architecture)
+- [저장소 구조 / Repository Layout](#저장소-구조--repository-layout)
+- [빠른 시작 / Quickstart](#빠른-시작--quickstart)
+- [명령어 참조 / Commands Reference](#명령어-참조--commands-reference)
+- [설정 / Configuration](#설정--configuration)
+- [로컬 개발 / Local Development](#로컬-개발--local-development)
+- [테스트 / Testing](#테스트--testing)
+- [배포 / Deployment](#배포--deployment)
+- [기여 가이드 / Contributing](#기여-가이드--contributing)
+- [유지보수자 / Maintainers](#유지보수자--maintainers)
+- [라이선스 / License](#라이선스--license)
 
-## 패키지 구성 / Package Contents
+## 프로젝트 개요 / Overview
 
-| 경로 | 역할 | 산출물 |
-| --- | --- | --- |
-| `apps/api` | Hono API (Drizzle + D1) | Cloudflare Worker 스크립트 |
-| `apps/admin` | 관리자 대시보드 (Next.js 15) | `dist/admin/` 정적 익스포트 |
-| `apps/worker` | 근로자 PWA (Next.js 15) + Android TWA | `dist/` 정적 익스포트, TWA APK |
-| `packages/types` | 공유 TS 타입/Enum/DTO/i18n 번역 | ESM 패키지 |
-| `packages/ui` | 공유 shadcn/ui + Tailwind v4 토큰 | ESM 패키지 |
-| `docs/` | PRD, 요구사항, 운영 런북 | Markdown |
-| `scripts/` | Go/JS 자동화 (verify, naming, anti-pattern) | 실행 스크립트 |
-| `e2e/` | Playwright 시나리오 (auth/admin/worker) | 테스트 스위트 |
-| `wrangler.toml` | 루트 Worker 설정 + 바인딩 | 배포 매니페스트 |
-| `turbo.json` | Turborepo 파이프라인 (types → ui → apps) | 빌드 오케스트레이션 |
+SafetyWallet은 현장 안전 관리의 전체 사이클을 하나의 코드베이스로 통합합니다. AGENTS.md 기준 60개의 모듈별 가이드가 코드를 보강하며, AGENTS.md·ARCHITECTURE.md·CODE_STYLE.md·CONTRIBUTING.md가 핵심 문서군을 형성합니다.
 
-## 먼저 읽을 파일 / First Files to Read
+- **대상 사용자**: 현장 근로자(Worker), 현장 관리자(Site Admin), 시스템 관리자(Super Admin).
+- **핵심 가치**: 모바일 우선 신고, 실시간 정산, 다국어 지원, 단일 배포 단위.
+- **확장성**: Workers Static Assets, R2, KV, Queue, Durable Objects로 구성되어 edge-first 운영.
 
-- `AGENTS.md` — 전체 지식 베이스 (스택, 구조, 인증, 바인딩)
-- `apps/worker/AGENTS.md` — 근로자 PWA 규약
-- `apps/worker/I18N_IMPLEMENTATION.md` — 다국어 런타임 동작
-- `apps/worker/ARCHITECTURE.md` — 앱 아키텍처 상세
-- `wrangler.toml` — 바인딩/라우팅 정의
-- `playwright.config.ts` — E2E 프로젝트 구성
+## 주요 기능 / Features
 
-## API · 엔트리 포인트 / API & Entry Points
+| 영역 | 기능 | 설명 |
+|------|------|------|
+| PWA | 위험 신고 | 사진·영상 첨부, R2 업로드 |
+| PWA | 출퇴근 기록 | 위치·시간 기반, KST 정렬 |
+| PWA | 안전 교육 | 모듈형 콘텐츠, 진도 추적 |
+| PWA | 포인트/리워드 | 적립·교환·정산 |
+| Admin | 신고 검토 | 승인·반려, 코멘트 |
+| Admin | 정산 | 포인트 정산 내역 |
+| Admin | 컴플라이언스 | 데이터 익스포트, 감사 로그 |
+| 통합 | 다국어 | ko, en, vi, zh (커스텀 i18n 런타임) |
+| 통합 | 인증 | JWT(KST 자정 만료) + 3단 권한 |
+| 통합 | 알림 | Queue/DLQ 기반 비동기 전달 |
 
-| 엔드포인트/경로 | 모듈 | 비고 |
-| --- | --- | --- |
-| `POST /api/auth/login` | `apps/api/src/routes/auth` | JWT 발급 (KST 자정 만료) |
-| `POST /api/posts` | `apps/api/src/routes/posts` | 위험 요인/게시글 신고 |
-| `POST /api/attendance` | `apps/api/src/routes/attendance` | 출퇴근 기록 (ACETIME 버킷 연동) |
-| `POST /api/votes/:id` | `apps/api/src/routes/votes` | 신고에 대한 현장 투표 |
-| `GET /api/admin/*` | `apps/api/src/routes/admin/*` | 관리자 전용 (역할 가드) |
-| `GET /api/education/*` | `apps/api/src/routes/education` | 교육 콘텐츠 |
-| `GET /api/system/status` | `apps/api/src/routes/system` | 헬스체크 (KV 캐시) |
-| Cron jobs (10) | `apps/api/src/jobs/*` | 정산, 리마인더, 동기화 |
-| RateLimiter DO | `apps/api/src/durable-objects/RateLimiter` | 요청 속도 제한 |
-| JobScheduler DO | `apps/api/src/durable-objects/JobScheduler` | 분산 작업 스케줄링 |
-| Worker PWA 진입 | `apps/worker/src/app` | Next.js App Router |
-| Admin 진입 | `apps/admin/src/app` | Next.js App Router |
-| Android 진입 | `apps/worker/android/app/src/main` | TWA `LauncherActivity` |
+## 아키텍처 / Architecture
+
+### 구성 요소 매핑 / Component Map
+
+| 컴포넌트 | 위치 | 역할 |
+|----------|------|------|
+| API Worker | `apps/api` | Hono + Drizzle + D1 |
+| Worker PWA | `apps/worker` | Next.js 15, 정적 익스포트 |
+| Admin PWA | `apps/admin` | Next.js 15, 포트 3001 |
+| Android TWA | `apps/worker/android` | Bubblewrap 스타일 네이티브 래퍼 |
+| 공유 타입 | `packages/types` | TS 타입·enum·DTO·i18n |
+| 공유 UI | `packages/ui` | shadcn/ui + Tailwind v4 |
+| 스크립트 | `scripts/` | Go/JS 검증 도구 |
+| E2E | `e2e/` | Playwright 6 프로젝트 |
+| 문서 | `docs/` | PRD, 요구사항, 운영 런북 |
+
+### Cloudflare 바인딩 / Cloudflare Bindings
+
+| 바인딩 | 타입 | 용도 |
+|--------|------|------|
+| `DB` | D1 | 주 데이터베이스 (34 테이블) |
+| `FAS_HYPERDRIVE` | Hyperdrive | 외부 FAS 직원 DB |
+| `ASSETS` | Workers Static Assets | 정적 프런트엔드 |
+| `R2` | R2 | 사용자 업로드 미디어 |
+| `ACETIME_BUCKET` | R2 | 출퇴근 자산 |
+| `KV` | KV | 인증 캐시·설정 |
+| `NOTIFICATION_QUEUE` / `NOTIFICATION_DLQ` | Queue | 알림 파이프라인 |
+| `RATE_LIMITER` | Durable Object | 요청 속도 제한 |
+| `JobScheduler` | Durable Object | 잡 스케줄링 |
+
+### 인증·권한 / Auth & Permissions
+
+| 계층 | 메커니즘 |
+|------|----------|
+| 토큰 | JWT, KST 자정 기준 만료 |
+| 검증 | JWT 디코드 → KST 날짜 확인 → KV 캐시 → D1 폴백 |
+| 역할 | `WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM` |
+| 멤버십 | 현장 단위 가입 |
+| 필드 플래그 | `canAwardPoints`, `canReview`, `canExportData` |
+| 클라이언트 키 | Worker: `safetywallet-auth`, Admin: `safetywallet-admin-auth` |
+
+### 요청 흐름 / Request Flow
+
+1. 클라이언트가 Worker 호스트(`*.safetywallet` 도메인)로 HTTPS 요청.
+2. Worker의 호스트명 라우터가 `worker`/`admin`/`api`로 경로 분기.
+3. 미들웨어 체인이 CORS → 로깅 → 분석 → 보안 헤더 순서로 처리.
+4. 인증 미들웨어가 JWT 검증 후 `c.set('user', payload)`.
+5. Hono 라우트가 Zod 검증 → Drizzle 쿼리 → 응답 직렬화.
+6. 부수 효과는 Queue 또는 Durable Object로 비동기 위임.
+
+## 저장소 구조 / Repository Layout
+
+실제 최상위 트리(제공된 메타데이터 기준)는 다음과 같습니다.
+
+```text
+.
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── CODE_STYLE.md
+├── CONTRIBUTING.md
+├── LICENSE
+├── README.md
+├── package.json
+├── package-lock.json
+├── playwright.config.ts
+├── turbo.json
+├── vitest.config.ts
+├── wrangler.toml
+└── apps/
+    └── worker/
+        ├── AGENTS.md
+        ├── I18N_IMPLEMENTATION.md
+        ├── next.config.mjs
+        ├── next-env.d.ts
+        ├── package.json
+        ├── postcss.config.cjs
+        ├── tailwind.config.js
+        ├── tsconfig.json
+        ├── vitest.config.ts
+        ├── android/
+        │   ├── build.gradle
+        │   ├── gradle.properties
+        │   ├── gradlew
+        │   ├── gradlew.bat
+        │   ├── manifest-checksum.txt
+        │   ├── settings.gradle
+        │   ├── store_icon.png
+        │   ├── twa-manifest.json
+        │   ├── app/
+        │   │   ├── build.gradle
+        │   │   └── src/main/
+        │   └── gradle/wrapper/
+        └── src/
+            ├── app/ (AGENTS.md, error.tsx, globals.css)
+            └── types/css.d.ts
+```
+
+`apps/api`, `apps/admin`, `packages/types`, `packages/ui`, `e2e/`, `docs/`, `scripts/`, `.github/workflows/`는 AGENTS.md의 시스템 설명에 명시된 구성 요소입니다.
 
 ## 빠른 시작 / Quickstart
 
-필수 도구: Node 20+, npm 10.8+, Wrangler, (E2E 실행 시) 1Password CLI.
+### 사전 요구 사항 / Prerequisites
+
+- Node.js `>=20.0.0` (권장: LTS 20.x)
+- npm `10.8.2` (Corepack 활성화 권장)
+- Wrangler CLI (`npx wrangler`)
+- Go `>=1.22` (스크립트 검증 도구 실행용)
+- Android 빌드를 진행하는 경우 JDK 17 + Android SDK
+
+### 설치 / Install
 
 ```bash
-# 1. 의존성 설치
 npm install
-
-# 2. 로컬 개발 (Worker + Admin + PWA 통합)
-npm run dev
-
-# 3. 정적 자산 + API 일괄 빌드
-npm run build
-
-# 4. 검증 파이프라인 (lint → typecheck → test)
-npm run verify
-
-# 5. E2E (Playwright, .env.e2e 주입 필요)
-npm run e2e
+npm run prepare   # husky 훅 설치
 ```
 
-자주 쓰는 스크립트 (전체는 루트 `package.json`):
+### 개발 서버 / Dev Servers
 
-- `npm run dev` — Turborepo 병렬 개발 서버
-- `npm run build` — 전체 빌드 + 정적 자산 패키징 (`dist/`)
-- `npm run build:one-worker` — API만 빌드 (Worker 스크립트 검증)
-- `npm run typecheck` — TypeScript 일괄 검증
-- `npm run test` — Vitest 일괄 실행
-- `npm run test:coverage` — 커버리지 포함 Vitest
-- `npm run lint` / `lint:naming` — 코드·명명 린트
-- `npm run format` / `format:check` — Prettier
-- `npm run check:wrangler-sync` — `wrangler.toml`과 코드 바인딩 일치 검사
-- `npm run git:preflight` — 커밋 전 검사
-- `npm run db:generate` — Drizzle 마이그레이션 생성
-- `npm run clean` — 산출물 + `node_modules` 정리
+```bash
+npm run dev       # turbo run dev — 워크스페이스 전체
+```
 
-## 인증 · 권한 / Authentication & Authorization
+기본 포트:
 
-- **로그인 → JWT**: KST 자정 기준 일일 만료, 클라이언트 Zustand 저장.
-- **3중 검증**: JWT 디코드 → KST 날짜 확인 → KV 캐시 조회 → D1 폴백.
-- **3단 권한**: 역할(`WORKER`, `SITE_ADMIN`, `SUPER_ADMIN`, `SYSTEM`) → 현장 멤버십 → 필드 플래그(`canAwardPoints`, `canReview`, `canExportData`).
-- **클라이언트 상태**: `safetywallet-auth` (worker), `safetywallet-admin-auth` (admin), 401 refresh mutex.
-- **바인딩**: `KV`(인증 캐시·시스템 상태·설정), `DB`(D1), `RATE_LIMITER` DO(엔드포인트 보호).
+| 앱 | 포트 |
+|----|------|
+| Worker PWA | 3000 |
+| Admin PWA | 3001 |
+| API Worker | wrangler dev (8787 기본) |
+
+### 첫 빌드 / First Build
+
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+```
+
+## 명령어 참조 / Commands Reference
+
+| 명령어 | 용도 |
+|--------|------|
+| `npm run dev` | 워크스페이스 개발 서버 일괄 기동 |
+| `npm run build` | 전체 빌드 + 정적 자산 통합 |
+| `npm run build:api` | `packages/types` + `apps/api` 빌드 |
+| `npm run build:static` | `dist/`로 정적 자산 복사 |
+| `npm run build:one-worker` | API만 단독 빌드 |
+| `npm run lint` | 워크스페이스 린트 |
+| `npm run lint:naming` | 명명 규칙 검증 |
+| `npm run typecheck` | TypeScript 타입 검사 |
+| `npm run test` | 워크스페이스 단위 테스트 |
+| `npm run test:coverage` | 커버리지 리포트 |
+| `npm run e2e` | Playwright E2E (`op` 기반) |
+| `npm run e2e:headed` | 헤드리스 모드 해제 |
+| `npm run e2e:ui` | Playwright UI 모드 |
+| `npm run db:generate` | Drizzle 마이그레이션 생성 |
+| `npm run check:wrangler-sync` | `wrangler.toml` 동기성 검증 |
+| `npm run git:preflight` | 커밋 전 검사 (Go) |
+| `npm run verify` | 통합 검증 (Go) |
+| `npm run format` / `format:check` | Prettier 실행/검증 |
+| `npm run clean` | 의존성·빌드 결과 정리 |
+| `npm run deploy:api` | 비활성 (CI 전용) |
+
+## 설정 / Configuration
+
+### 환경 변수 / Environment Variables
+
+- `.env.e2e`: Playwright 실행용 (`op` 경유 로드)
+- 워커 바인딩: `wrangler.toml` 단일 진입점
+- 시크릿: `wrangler secret put <KEY>`로 등록
+
+### 호스트명 라우팅 / Hostname Routing
+
+Worker는 들어오는 호스트명에 따라 다음으로 라우팅합니다.
+
+| 호스트 패턴 | 대상 |
+|-------------|------|
+| `worker.*` | `apps/worker/out` |
+| `admin.*` | `apps/admin/out` |
+| `api.*` | Hono API |
+
+### 다국어 / i18n
+
+`apps/worker/src/i18n`의 커스텀 런타임이 다음 로케일을 처리합니다.
+
+| 로케일 | 코드 |
+|--------|------|
+| 한국어 | `ko` |
+| 영어 | `en` |
+| 베트남어 | `vi` |
+| 중국어 | `zh` |
+
+번역 데이터는 `packages/types`에 위치합니다. 자세한 구현은 `apps/worker/I18N_IMPLEMENTATION.md` 참고.
 
 ## 로컬 개발 / Local Development
 
-- `apps/api`, `apps/admin`, `apps/worker` 각각 `vitest.config.ts`로 단위 테스트.
-- `e2e/` 디렉터리는 Playwright 6개 프로젝트(인증, 관리자, 근로자 흐름 등).
-- `wrangler.toml`은 루트에서 단일 Worker로 통합 관리되며, 호스트 이름(`worker` / `admin` 서브도메인)별 라우팅을 정의.
-- TWA 패키징은 `apps/worker/android/`의 Gradle 프로젝트(`./gradlew assembleRelease`)로 수행하며, 정적 자산은 빌드 산출물에서 주입.
-- 명명 규칙과 안티 패턴 검사는 커밋 훅(Husky + lint-staged)과 `npm run git:preflight`에서 강제.
+### 브랜치 규칙 / Branching
+
+- `master`: 프로덕션. Git-ref 기반 자동 배포.
+- 기능 브랜치는 짧은 수명 + 스크래프(merge 후 삭제).
+
+### 코드 스타일 / Code Style
+
+- `CODE_STYLE.md`의 규칙을 우선 적용합니다.
+- Prettier 2-space, ESLint 8.57.
+- Husky + lint-staged로 커밋 직전 검증.
+- 명명 규칙은 `npm run lint:naming`으로 강제.
+
+### 안티 패턴 검사 / Anti-pattern Checks
+
+`lint-staged`의 `scripts/check-anti-patterns.go`가 다음 항목을 점검합니다.
+
+- 순환 의존성
+- 매직 넘버
+- 인라인 비즈니스 로직
+- 누락된 i18n 키
+
+### TWA 개발 / TWA Development
+
+`apps/worker/android`는 Bubblewrap 스타일 TWA 래퍼입니다.
+
+- 패키지: `me.jclee.safetywallet.twa`
+- 진입점: `LauncherActivity`, `DelegationService`, `Application`
+- 매니페스트: `twa-manifest.json`
+- 빌드: `./gradlew assembleRelease`
 
 ## 테스트 / Testing
 
-- 단위/통합: Vitest (`apps/*/vitest.config.ts`, 루트 `vitest.config.ts`).
-- E2E: Playwright (`playwright.config.ts`, 6개 프로젝트), 1Password CLI로 시크릿 주입.
-- D1 마이그레이션: `migrations/` 디렉터리의 31개 SQL 파일을 CI가 순차 적용.
-- 보안 가드: `scripts/check-anti-patterns.go`, `scripts/lint-naming.js`, `scripts/check-wrangler-sync.js`.
+| 계층 | 도구 | 위치 |
+|------|------|------|
+| 단위 | Vitest | 워크스페이스 전반 |
+| E2E | Playwright | `e2e/` (6 프로젝트) |
+| 타입 | `tsc --noEmit` | `npm run typecheck` |
+| 정적 | ESLint + Prettier | `npm run lint` |
+
+E2E는 1Password CLI(`op`)로 `.env.e2e`를 주입받습니다. CI에서는 별도 자격 증명 흐름을 사용합니다.
 
 ## 배포 / Deployment
 
-- `master` 브랜치 푸시 시 CI가 마이그레이션 적용 후 Worker를 배포.
-- 수동 배포는 비활성화되어 있으며 `npm run deploy:api`는 실패를 반환하도록 의도적으로 잠겨 있다.
-- 산출물 구조: `dist/`(worker PWA), `dist/admin/`(admin 대시보드)가 Worker `ASSETS`로 서빙.
+- **수동 배포는 비활성화**되어 있습니다. `npm run deploy:api`는 의도적으로 실패합니다.
+- 배포는 `master` 브랜치 Git-ref 기반 GitHub Actions에서만 트리거됩니다.
+- 파이프라인 순서: `lint → typecheck → guards → test → build → migrate`.
+- 정적 자산은 `dist/`로 통합되어 `ASSETS` 바인딩으로 서빙됩니다.
 
-## 기여 / Contributing
+## 기여 가이드 / Contributing
 
-- 절차와 가드는 `CONTRIBUTING.md`와 `CODE_STYLE.md`를 따른다.
-- 커밋 전 `npm run git:preflight`와 `npm run verify` 통과가 필요하다.
-- PR은 Turborepo 태스크(`build`, `typecheck`, `test`, `lint`)와 Playwright E2E가 모두 통과해야 한다.
+`CONTRIBUTING.md`를 우선 읽어 주세요. 핵심 요약:
+
+1. 이슈 또는 작업 항목 생성 후 브랜치 분기.
+2. `npm run git:preflight` 통과 후 PR 개설.
+3. PR은 한 가지 변경에 집중하고, 모듈별 `AGENTS.md`를 함께 갱신.
+4. 리뷰어는 ARCHITECTURE.md 기준으로 변경 영향 평가.
+5. 머지 후 `master`에서 자동 배포 트리거.
+
+## 유지보수자 / Maintainers
+
+| 역할 | 책임 |
+|------|------|
+| 시스템 관리자 | 도메인, 바인딩, 배포 게이트 |
+| 백엔드 리드 | API, Drizzle, Durable Objects |
+| 프런트엔드 리드 | Worker/Admin PWA, i18n |
+| 모바일 리드 | Android TWA |
+| 운영 리드 | KV/Queue/R2 정책, 모니터링 |
+
+상세 연락처는 저장소 내 CODEOWNERS 또는 `docs/operations/`을 참고하세요.
 
 ## 라이선스 / License
 
-`LICENSE` 파일을 참조한다. 별도 명시가 없는 한 본 저장소의 모든 산출물은 해당 라이선스를 따른다.
+`LICENSE` 파일의 조항을 따릅니다. 사내 배포용이며 외부 재배포 시 별도 승인이 필요합니다.
 
-## 운영자 · 문의 / Maintainers & Contact
+---
 
-- 저장소 운영/지식 베이스: `AGENTS.md`
-- 사양·운영 절차: `docs/` 하위 런북
-- 이슈 트래커: 저장소 Issues 탭
+### 추가 문서 / Further Documentation
 
-## 추가 문서 / Further Documentation
-
-- 지식 베이스: [`AGENTS.md`](AGENTS.md)
-- 아키텍처: [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 코드 스타일: [`CODE_STYLE.md`](CODE_STYLE.md)
-- 기여 가이드: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- 근로자 PWA 규약: [`apps/worker/AGENTS.md`](apps/worker/AGENTS.md)
-- i18n 동작: [`apps/worker/I18N_IMPLEMENTATION.md`](apps/worker/I18N_IMPLEMENTATION.md)
-- 사양·운영: [`docs/`](docs/)
-- Playwright 구성: [`playwright.config.ts`](playwright.config.ts)
-- Worker 설정: [`wrangler.toml`](wrangler.toml)
+| 문서 | 경로 |
+|------|------|
+| 아키텍처 상세 | `ARCHITECTURE.md` |
+| 코드 스타일 | `CODE_STYLE.md` |
+| 기여 절차 | `CONTRIBUTING.md` |
+| 모듈별 가이드 (60개) | 각 디렉터리의 `AGENTS.md` |
+| i18n 구현 | `apps/worker/I18N_IMPLEMENTATION.md` |
+| 운영 런북 | `docs/operations/` |
+| 요구사항 명세 | `docs/` |
