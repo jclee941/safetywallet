@@ -37,7 +37,7 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.35",
     "happy-dom": "^20.11.1",
-    "postcss": "^8.5.22",
+    "postcss": "^8.5.23",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.114.0"
