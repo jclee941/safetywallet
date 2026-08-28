@@ -17,7 +17,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.8.0",
+    "@hono/zod-validator": "^0.9.0",
     "@safetywallet/types": "*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.31",
@@ -25,7 +25,7 @@
     "jpeg-js": "^0.4.4",
     "mysql2": "^3.23.1",
     "piexifjs": "^1.0.6",
-    "sql.js": "^1.14.1",
+    "sql.js": "^1.14.2",
     "yaml": "^2.8.4",
     "zod": "4.4.3"
   },
@@ -33,6 +33,6 @@
     "@cloudflare/workers-types": "^4.20260626.1",
     "drizzle-kit": "^0.31.10",
     "typescript": "^6.0.3",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.125.0"
   }
 }

@@ -13,13 +13,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@marsidev/react-turnstile": "^1.5.2",
+    "@marsidev/react-turnstile": "^1.6.0",
     "@safetywallet/types": "*",
     "@safetywallet/ui": "*",
     "@tanstack/react-query": "^5.90.21",
     "idb": "^8.0.3",
     "lucide-react": "^1.26.0",
-    "next": "16.2.11",
+    "next": "16.3.2",
     "next-international": "^1.3.1",
     "next-pwa": "^5.6.0",
     "react": "19.2.8",
@@ -27,8 +27,8 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
-    "@testing-library/jest-dom": "^7.0.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.17",
@@ -36,10 +36,10 @@
     "@vitejs/plugin-react": "^5.1.4",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.35",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.6",
     "postcss": "^8.5.22",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.125.0"
   }
 }
