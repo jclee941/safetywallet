@@ -29,7 +29,7 @@
     "@tiptap/react": "^3.20.1",
     "@tiptap/starter-kit": "^3.20.1",
     "lucide-react": "^1.26.0",
-    "next": "16.2.11",
+    "next": "16.4.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.0",
